@@ -6,7 +6,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${path}`, options);
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(body.detail || "请求失败");
+    throw new Error(body.detail || "Request failed / 请求失败");
   }
   return response.json();
 }
