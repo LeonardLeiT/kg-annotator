@@ -4,6 +4,8 @@ export type DocumentItem = {
   status: string;
   page_count: number;
   sentence_count: number;
+  reviewed_count: number;
+  max_revision: number;
 };
 
 export type SentenceItem = {

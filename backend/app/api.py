@@ -37,10 +37,22 @@ from .services.resolution import decide_merge, generate_merge_candidates
 router = APIRouter(prefix="/api")
 
 
-def document_json(row: Document) -> dict:
+def document_json(row: Document, db: Session) -> dict:
+    reviewed_count = db.scalar(
+        select(func.count()).select_from(Sentence).where(
+            Sentence.document_id == row.id,
+            Sentence.status.in_(["approved", "uncertain", "skipped"]),
+        )
+    ) or 0
+    max_revision = db.scalar(
+        select(func.max(AnnotationRevision.revision_number))
+        .join(Sentence, Sentence.id == AnnotationRevision.sentence_id)
+        .where(Sentence.document_id == row.id)
+    ) or 0
     return {
         "id": row.id, "filename": row.filename, "status": row.status,
         "page_count": row.page_count, "sentence_count": row.sentence_count,
+        "reviewed_count": reviewed_count, "max_revision": max_revision,
         "created_at": row.created_at,
     }
 
@@ -75,12 +87,12 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
         row.status = "parse_failed"
         db.commit()
         raise HTTPException(422, f"PDF 解析失败: {exc}") from exc
-    return document_json(row)
+    return document_json(row, db)
 
 
 @router.get("/documents")
 def list_documents(db: Session = Depends(get_db)):
-    return [document_json(item) for item in db.scalars(select(Document).order_by(Document.created_at.desc()))]
+    return [document_json(item, db) for item in db.scalars(select(Document).order_by(Document.created_at.desc()))]
 
 
 @router.delete("/documents/{document_id}")

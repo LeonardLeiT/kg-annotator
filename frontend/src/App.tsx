@@ -18,7 +18,7 @@ function StatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
   const labels: Record<string, string> = {
     parsed: t("statusParsed"), queued: t("statusQueued"), extracting: t("statusExtracting"), reviewable: t("statusReviewable"),
-    completed: t("statusCompleted"), approved: t("statusApproved"), skipped: t("statusSkipped"), uncertain: t("statusUncertain"), predicted: t("statusPredicted"), pending: t("statusPending"),
+    annotating: t("statusAnnotating"), completed: t("statusCompleted"), approved: t("statusApproved"), skipped: t("statusSkipped"), uncertain: t("statusUncertain"), predicted: t("statusPredicted"), pending: t("statusPending"),
   };
   return <span className={`status status-${status}`}>{labels[status] || status}</span>;
 }
@@ -68,9 +68,9 @@ function DocumentsPage({ onAnnotate, onDeleted }: { onAnnotate: (doc: DocumentIt
       {documents.length === 0 ? <div className="empty">{t("emptyDocuments")}</div> :
         <div className="document-list">{documents.map((doc) => <article className="document-row" key={doc.id}>
           <div className="doc-icon">PDF</div>
-          <div className="doc-main"><strong>{doc.filename}</strong><span>{doc.page_count} {t("pages")} · {doc.sentence_count} {t("sentences")}</span></div>
-          <StatusBadge status={doc.status}/>
-          {["parsed", "reviewable"].includes(doc.status) && <button className="primary" onClick={() => onAnnotate(doc)}>{t("startAnnotation")}</button>}
+          <div className="doc-main"><strong>{doc.filename}</strong><span>{doc.page_count} {t("pages")} · {doc.sentence_count} {t("sentences")}</span>{doc.reviewed_count > 0 && <span>{t("documentProgress", { reviewed: doc.reviewed_count, total: doc.sentence_count })} · {t("highestVersion", { count: doc.max_revision })}</span>}</div>
+          <StatusBadge status={doc.reviewed_count > 0 && doc.status === "reviewable" ? "annotating" : doc.status}/>
+          {["parsed", "reviewable"].includes(doc.status) && <button className="primary" onClick={() => onAnnotate(doc)}>{doc.reviewed_count > 0 ? t("continueAnnotation") : t("startAnnotation")}</button>}
           {doc.status === "completed" && <button onClick={() => onAnnotate(doc)}>{t("continueAnnotation")}</button>}
           <button className="danger-button" disabled={busy || ["queued", "extracting"].includes(doc.status)} onClick={() => remove(doc)}>{t("delete")}</button>
         </article>)}</div>}
