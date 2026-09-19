@@ -115,7 +115,7 @@ select, input { border: 1px solid var(--line); border-radius: 6px; padding: 6px;
 .candidate { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #edf0ec; }
 .manual-empty { padding: 34px 12px; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.8; }
 .manual-empty small { color: #929b95; }
-.candidate.disabled, .relation-card.disabled { opacity: .42; }
+.candidate.disabled { opacity: .42; }
 .toggle { width: 28px; height: 28px; padding: 0; border-radius: 50%; color: white; background: var(--green); }
 .candidate > div { display: flex; flex-direction: column; gap: 5px; }
 .candidate strong { font-size: 14px; }
