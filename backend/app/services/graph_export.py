@@ -19,6 +19,7 @@ def build_gexf(graph: dict) -> bytes:
     ET.SubElement(node_attributes, f"{{{GEXF_NS}}}attribute", {"id": "entity_type", "title": "entity_type", "type": "string"})
     ET.SubElement(node_attributes, f"{{{GEXF_NS}}}attribute", {"id": "aliases", "title": "aliases", "type": "string"})
     ET.SubElement(node_attributes, f"{{{GEXF_NS}}}attribute", {"id": "mention_count", "title": "mention_count", "type": "integer"})
+    ET.SubElement(node_attributes, f"{{{GEXF_NS}}}attribute", {"id": "document_count", "title": "document_count", "type": "integer"})
 
     edge_attributes = ET.SubElement(graph_element, f"{{{GEXF_NS}}}attributes", {"class": "edge"})
     ET.SubElement(edge_attributes, f"{{{GEXF_NS}}}attribute", {"id": "relation_type", "title": "relation_type", "type": "string"})
@@ -35,6 +36,7 @@ def build_gexf(graph: dict) -> bytes:
         ET.SubElement(values, f"{{{GEXF_NS}}}attvalue", {"for": "entity_type", "value": str(node["entity_type"])})
         ET.SubElement(values, f"{{{GEXF_NS}}}attvalue", {"for": "aliases", "value": " | ".join(node["aliases"])})
         ET.SubElement(values, f"{{{GEXF_NS}}}attvalue", {"for": "mention_count", "value": str(node["mention_count"])})
+        ET.SubElement(values, f"{{{GEXF_NS}}}attvalue", {"for": "document_count", "value": str(node.get("document_count", 1))})
 
     edges_element = ET.SubElement(graph_element, f"{{{GEXF_NS}}}edges")
     for index, edge in enumerate(graph["edges"]):

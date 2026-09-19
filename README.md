@@ -31,7 +31,7 @@ The first complete manual pass is immediately usable as a knowledge graph. Every
 | PDF processing | Page-level extraction, Chinese/English sentence segmentation, standalone formula reconstruction, original-formula snapshots, and surrounding context |
 | Manual annotation | Character-accurate spans across previous/current/next sentences, cross-sentence relations, configurable types, Pass and uncertain decisions, and unlimited revisions |
 | Agreement | Entity, relation, and overall Fleiss' Kappa across two or more manual annotation versions on reproducible random subsets |
-| Knowledge graph | Article-level aggregation, evidence provenance, interactive graph visualization, JSONL, CSV, and Gephi GEXF exports |
+| Knowledge graph | Cross-document canonical aggregation, document/page/sentence provenance, interactive visualization, and global Gephi GEXF export |
 | Entity resolution | BigModel `embedding-3`, 85% review threshold, exact-name auto-merge policy, human-selected preferred names, and accumulated aliases |
 | Interface | Instant Chinese/English switching with the selected language remembered locally |
 
@@ -43,8 +43,8 @@ flowchart LR
     B --> E[Manual entity annotation]
     E --> F[Manual relation annotation]
     F --> D[Optional repeated annotation and Fleiss' Kappa]
-    F --> G[Article knowledge graph]
-    G --> H[Cross-document entity resolution]
+    F --> G[Cross-document entity resolution]
+    G --> H[Global canonical knowledge graph]
     H --> I[JSONL / CSV / GEXF]
 ```
 

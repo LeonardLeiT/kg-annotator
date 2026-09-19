@@ -418,7 +418,7 @@ function KnowledgeGraphView({ graph }: { graph: ArticleGraph }) {
   </section>;
 }
 
-function GraphPage({ document }: { document: DocumentItem }) {
+function GraphPage({ document }: { document: DocumentItem | null }) {
   const { language, t } = useI18n();
   const [graph, setGraph] = useState<ArticleGraph | null>(null);
   const [agreement, setAgreement] = useState<AgreementResult | null>(null);
@@ -427,10 +427,11 @@ function GraphPage({ document }: { document: DocumentItem }) {
   const [annotators, setAnnotators] = useState(2);
   const [error, setError] = useState("");
   useEffect(() => {
-    api.articleGraph(document.id).then(setGraph).catch((e) => setError(e.message));
-    api.agreement(document.id, 50, 42, 2).then(setAgreement).catch((e) => setError(e.message));
-  }, [document.id]);
+    api.globalGraph().then(setGraph).catch((e) => setError(e.message));
+    if (document) api.agreement(document.id, 50, 42, 2).then(setAgreement).catch((e) => setError(e.message));
+  }, [document?.id]);
   async function calculateAgreement() {
+    if (!document) return;
     try {
       setAgreement(await api.agreement(document.id, sampleSize, seed, annotators));
     } catch (e) {
@@ -442,18 +443,18 @@ function GraphPage({ document }: { document: DocumentItem }) {
   const nodeById = Object.fromEntries(graph.nodes.map((node) => [node.id, node]));
   const completion = graph.stats.sentences ? Math.round(graph.stats.reviewed / graph.stats.sentences * 100) : 0;
   return <main className="page">
-    <section className="hero compact"><div><p className="eyebrow">ARTICLE KNOWLEDGE GRAPH</p><h1>{document.filename}</h1><p>{t("graphIntro")}</p></div><div className="graph-hero-actions"><a className="gephi-button" href={api.exportUrl(document.id, "gexf")}>{t("exportGephi")}</a><div className="graph-progress"><strong>{completion}%</strong><span>{t("reviewProgress")}</span></div></div></section>
-    <section className="graph-stats"><div><strong>{graph.stats.reviewed}</strong><span>{t("reviewed", { total: graph.stats.sentences })}</span></div><div><strong>{graph.stats.skipped}</strong><span>{t("passed")}</span></div><div><strong>{graph.stats.nodes}</strong><span>{t("canonicalEntities")}</span></div><div><strong>{graph.stats.edges}</strong><span>{t("relations")}</span></div></section>
-    <section className="panel agreement-panel">
+    <section className="hero compact"><div><p className="eyebrow">CROSS-DOCUMENT KNOWLEDGE GRAPH</p><h1>{t("globalGraphTitle")}</h1><p>{t("graphIntro")}</p></div><div className="graph-hero-actions"><a className="gephi-button" href={api.globalGraphExportUrl()}>{t("exportGephi")}</a><div className="graph-progress"><strong>{completion}%</strong><span>{t("reviewProgress")}</span></div></div></section>
+    <section className="graph-stats"><div><strong>{graph.stats.documents || 0}</strong><span>{t("sourceDocuments")}</span></div><div><strong>{graph.stats.reviewed}</strong><span>{t("reviewed", { total: graph.stats.sentences })}</span></div><div><strong>{graph.stats.nodes}</strong><span>{t("canonicalEntities")}</span></div><div><strong>{graph.stats.edges}</strong><span>{t("relations")}</span></div></section>
+    {document && <section className="panel agreement-panel">
       <div className="agreement-header"><div><h2>{t("agreementTitle")}</h2><p>{t("agreementIntro")}</p></div><div className="agreement-controls"><label>{t("annotationRounds")}<input type="number" min="2" max="100" value={annotators} onChange={(event) => setAnnotators(Math.max(2, Number(event.target.value)))}/></label><label>{t("sampleSize")}<input type="number" min="1" max="1000" value={sampleSize} onChange={(event) => setSampleSize(Math.max(1, Number(event.target.value)))}/></label><label>{t("randomSeed")}<input type="number" min="0" value={seed} onChange={(event) => setSeed(Math.max(0, Number(event.target.value)))}/></label><button onClick={calculateAgreement}>{t("recalculate")}</button></div></div>
       {!agreement ? <div className="empty">{t("calculatingAgreement")}</div> : <><div className="agreement-metrics">{([[t("entities"), agreement.entity], [t("relations"), agreement.relation], [t("overall"), agreement.overall]] as const).map(([label, metric]) => {
         const interpretation = language === "zh" ? metric.interpretation : ({ "无法计算": t("agreementUndefined"), "低于随机一致": t("agreementBelowChance"), "轻微一致": t("agreementSlight"), "一般一致": t("agreementFair"), "中等一致": t("agreementModerate"), "较强一致": t("agreementSubstantial"), "高度一致": t("agreementAlmostPerfect") }[metric.interpretation] || metric.interpretation);
         return <div key={label}><span>{label}</span><strong>{metric.kappa === null ? "—" : metric.kappa.toFixed(3)}</strong><small>{interpretation} · {t("candidateItems", { count: metric.items })}</small></div>;
       })}</div><div className="agreement-footnote">{t("agreementFootnote", { rounds: agreement.annotators, eligible: agreement.eligible_sentences, sampled: agreement.sampled_sentences, seed: agreement.seed })}{agreement.sampled_sentences > 0 && ` · ${t("sentenceOrdinals", { ordinals: agreement.sampled_ordinals.join(", ") })}`}</div></>}
-    </section>
+    </section>}
     <KnowledgeGraphView graph={graph}/>
     <section className="graph-grid">
-      <div className="panel graph-panel"><div className="section-title"><h2>{t("entities")}</h2><span>{graph.nodes.length}</span></div>{graph.nodes.length === 0 ? <div className="empty">{t("noGraphEntities")}</div> : <div className="graph-rows">{graph.nodes.map((node) => <div className="graph-row" key={node.id}><span className="node-type">{node.entity_type}</span><div><strong>{node.name}</strong><small>{node.aliases.join(" · ")}</small></div><span>{t("evidence", { count: node.mention_count })}</span></div>)}</div>}</div>
+      <div className="panel graph-panel"><div className="section-title"><h2>{t("entities")}</h2><span>{graph.nodes.length}</span></div>{graph.nodes.length === 0 ? <div className="empty">{t("noGraphEntities")}</div> : <div className="graph-rows">{graph.nodes.map((node) => <div className="graph-row" key={node.id}><span className="node-type">{node.entity_type}</span><div><strong>{node.name}</strong><small>{node.aliases.join(" · ")}</small></div><span>{t("globalEvidence", { mentions: node.mention_count, documents: node.document_count || 1 })}</span></div>)}</div>}</div>
       <div className="panel graph-panel"><div className="section-title"><h2>{t("relations")}</h2><span>{graph.edges.length}</span></div>{graph.edges.length === 0 ? <div className="empty">{t("noGraphRelations")}</div> : <div className="graph-rows">{graph.edges.map((edge, index) => <div className="edge-row" key={`${edge.source_id}-${edge.relation_type}-${edge.target_id}-${index}`}><strong>{nodeById[edge.source_id]?.name || edge.source_id}</strong><span>{edge.relation_type}</span><strong>{nodeById[edge.target_id]?.name || edge.target_id}</strong><small>{t("evidence", { count: edge.evidence_count })}</small></div>)}</div>}</div>
     </section>
   </main>;
@@ -468,10 +469,10 @@ export default function App() {
   useEffect(() => { api.ontology().then(setOntology); }, []);
   useEffect(() => { localStorage.setItem("kg-annotator-language", language); globalThis.document.documentElement.lang = language === "zh" ? "zh-CN" : "en"; }, [language]);
   return <I18nContext.Provider value={{ language, t }}><div className="app-shell">
-    <header><button className="brand" onClick={() => setPage("documents")}><span>KG</span><strong>Annotator</strong></button><nav><button className={page === "documents" ? "active" : ""} onClick={() => setPage("documents")}>{t("navDocuments")}</button><button disabled={!document} className={page === "annotation" ? "active" : ""} onClick={() => setPage("annotation")}>{t("navAnnotation")}</button><button disabled={!document} className={page === "graph" ? "active" : ""} onClick={() => setPage("graph")}>{t("navGraph")}</button><button className={page === "merge" ? "active" : ""} onClick={() => setPage("merge")}>{t("navMerge")}</button></nav><div className="header-actions">{document && <div className="export-links"><a href={api.exportUrl(document.id, "jsonl")}>JSONL</a><a href={api.exportUrl(document.id, "csv")}>CSV</a><a href={api.exportUrl(document.id, "gexf")}>GEXF</a></div>}<div className="language-toggle" aria-label={t("languageLabel")}><button className={language === "zh" ? "active" : ""} onClick={() => setLanguage("zh")}>中文</button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>EN</button></div></div></header>
+    <header><button className="brand" onClick={() => setPage("documents")}><span>KG</span><strong>Annotator</strong></button><nav><button className={page === "documents" ? "active" : ""} onClick={() => setPage("documents")}>{t("navDocuments")}</button><button disabled={!document} className={page === "annotation" ? "active" : ""} onClick={() => setPage("annotation")}>{t("navAnnotation")}</button><button className={page === "graph" ? "active" : ""} onClick={() => setPage("graph")}>{t("navGraph")}</button><button className={page === "merge" ? "active" : ""} onClick={() => setPage("merge")}>{t("navMerge")}</button></nav><div className="header-actions">{document && <div className="export-links"><a href={api.exportUrl(document.id, "jsonl")}>JSONL</a><a href={api.exportUrl(document.id, "csv")}>CSV</a><a href={api.exportUrl(document.id, "gexf")}>GEXF</a></div>}<div className="language-toggle" aria-label={t("languageLabel")}><button className={language === "zh" ? "active" : ""} onClick={() => setLanguage("zh")}>中文</button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>EN</button></div></div></header>
     {page === "documents" && <DocumentsPage onAnnotate={(doc) => { setDocument(doc); setPage("annotation"); }} onDeleted={(id) => setDocument((current) => current?.id === id ? null : current)}/>} 
     {page === "annotation" && document && <AnnotationPage document={document} ontology={ontology}/>} 
-    {page === "graph" && document && <GraphPage document={document}/>} 
+    {page === "graph" && <GraphPage document={document}/>}
     {page === "merge" && <MergePage/>}
   </div></I18nContext.Provider>;
 }

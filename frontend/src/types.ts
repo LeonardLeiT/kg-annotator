@@ -66,21 +66,24 @@ export type MergeCandidate = {
 };
 
 export type ArticleGraph = {
-  stats: { sentences: number; reviewed: number; approved: number; skipped: number; nodes: number; edges: number };
+  scope?: "global" | "document";
+  stats: { documents?: number; sentences: number; reviewed: number; approved: number; skipped: number; nodes: number; edges: number };
   nodes: Array<{
     id: string;
     name: string;
     entity_type: string;
     aliases: string[];
     mention_count: number;
-    evidence: Array<{ sentence_id: string; page: number; text: string }>;
+    document_count?: number;
+    evidence: Array<{ document_id?: string; document?: string; sentence_id: string; page: number; text: string; context_role?: string }>;
   }>;
   edges: Array<{
     source_id: string;
     relation_type: string;
     target_id: string;
     evidence_count: number;
-    evidence: Array<{ sentence_id: string; page: number; text: string }>;
+    document_count?: number;
+    evidence: Array<{ document_id?: string; document?: string; sentence_id: string; page: number; text: string }>;
   }>;
 };
 

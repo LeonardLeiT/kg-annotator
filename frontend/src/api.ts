@@ -24,6 +24,8 @@ export const api = {
   sentence: (id: string) => request<SentenceDetail>(`/sentences/${id}`),
   formulaImageUrl: (id: string) => `${BASE}/sentences/${id}/formula-image`,
   articleGraph: (id: string) => request<ArticleGraph>(`/documents/${id}/graph`),
+  globalGraph: () => request<ArticleGraph>("/graph/global"),
+  globalGraphExportUrl: () => `${BASE}/export/global/gexf`,
   agreement: (id: string, sampleSize = 50, seed = 42, annotators = 2) => request<AgreementResult>(`/documents/${id}/agreement?sample_size=${sampleSize}&seed=${seed}&annotators=${annotators}`),
   annotate: (id: string, data: unknown) => request<{ status: string; revision: number }>(`/sentences/${id}/annotation`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),

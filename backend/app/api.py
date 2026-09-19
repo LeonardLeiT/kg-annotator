@@ -31,6 +31,7 @@ from .services.documents import is_formula_unit, parse_pdf
 from .services.document_deletion import delete_document
 from .services.ontology import load_ontology
 from .services.graph_export import build_gexf
+from .services.global_graph import build_global_graph
 from .services.resolution import decide_merge, generate_merge_candidates
 
 
@@ -125,6 +126,11 @@ def article_graph(document_id: str, db: Session = Depends(get_db)):
     if not document:
         raise HTTPException(404, "文档不存在")
     return build_article_graph(db, document_id)
+
+
+@router.get("/graph/global")
+def global_graph(db: Session = Depends(get_db)):
+    return build_global_graph(db)
 
 
 @router.get("/documents/{document_id}/agreement")
@@ -297,4 +303,14 @@ def export_gexf(document_id: str, db: Session = Depends(get_db)):
         content=content,
         media_type="application/gexf+xml",
         headers={"Content-Disposition": 'attachment; filename="article-kg.gexf"'},
+    )
+
+
+@router.get("/export/global/gexf")
+def export_global_gexf(db: Session = Depends(get_db)):
+    content = build_gexf(build_global_graph(db))
+    return Response(
+        content=content,
+        media_type="application/gexf+xml",
+        headers={"Content-Disposition": 'attachment; filename="global-kg.gexf"'},
     )

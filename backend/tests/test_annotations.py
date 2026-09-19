@@ -2,11 +2,12 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db import Base
-from app.models import AnnotationRevision, Document, EntityMention, Sentence
+from app.models import AnnotationRevision, CanonicalEntity, Document, EntityMention, Sentence
 from app.schemas import AnnotationInput, EntityInput, RelationInput
 from app.services.annotations import backfill_annotation_revisions, save_annotation
 from app.services.article_graph import build_article_graph
 from app.services.graph_export import GEXF_NS, build_gexf
+from app.services.global_graph import build_global_graph
 from xml.etree import ElementTree as ET
 
 
@@ -155,4 +156,39 @@ def test_entities_can_be_annotated_from_neighboring_context():
         assert save_annotation(db, sentence, payload) == 1
         mentions = list(db.scalars(select(EntityMention).order_by(EntityMention.start)))
         assert {item.context_role for item in mentions} == {"previous", "next"}
+    engine.dispose()
+
+
+def test_global_graph_joins_documents_by_canonical_entity():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        canonical = CanonicalEntity(
+            preferred_name="Quartz", entity_type="Material", aliases_json='["SiO2", "Quartz"]'
+        )
+        db.add(canonical)
+        db.flush()
+        for index, filename in enumerate(("one.pdf", "two.pdf")):
+            document = Document(filename=filename, storage_path=filename)
+            db.add(document)
+            db.flush()
+            sentence = Sentence(
+                document_id=document.id, ordinal=0, page_number=1,
+                text="Quartz is stable.", status="approved",
+            )
+            db.add(sentence)
+            db.flush()
+            db.add(EntityMention(
+                sentence_id=sentence.id, text="Quartz", entity_type="Material",
+                start=0, end=6, source="manual", decision="manual",
+                canonical_entity_id=canonical.id,
+            ))
+        db.commit()
+
+        graph = build_global_graph(db)
+        assert graph["stats"]["documents"] == 2
+        assert graph["stats"]["nodes"] == 1
+        assert graph["nodes"][0]["document_count"] == 2
+        assert graph["nodes"][0]["mention_count"] == 2
+        assert {item["document"] for item in graph["nodes"][0]["evidence"]} == {"one.pdf", "two.pdf"}
     engine.dispose()
