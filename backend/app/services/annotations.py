@@ -7,6 +7,62 @@ from ..models import AnnotationRevision, CanonicalEntity, Document, EntityMentio
 from ..schemas import AnnotationInput
 
 
+def backfill_annotation_revisions(db: Session) -> int:
+    """Import pre-versioning human decisions as revision 1, once per sentence."""
+    reviewed = list(db.scalars(
+        select(Sentence).where(Sentence.status.in_(["approved", "uncertain", "skipped"]))
+    ))
+    created = 0
+    for sentence in reviewed:
+        exists = db.scalar(
+            select(func.count()).select_from(AnnotationRevision).where(
+                AnnotationRevision.sentence_id == sentence.id
+            )
+        )
+        if exists:
+            continue
+        mentions = [] if sentence.status == "skipped" else list(db.scalars(
+            select(EntityMention).where(EntityMention.sentence_id == sentence.id)
+        ))
+        mention_ids = {item.id for item in mentions}
+        relations = [] if sentence.status == "skipped" else list(db.scalars(
+            select(RelationMention).where(RelationMention.sentence_id == sentence.id)
+        ))
+        entity_payload = [
+            {
+                "client_id": item.id,
+                "text": item.text,
+                "entity_type": item.entity_type,
+                "start": item.start,
+                "end": item.end,
+                "source": "manual",
+                "decision": "manual",
+            }
+            for item in mentions
+        ]
+        relation_payload = [
+            {
+                "source_client_id": item.source_mention_id,
+                "target_client_id": item.target_mention_id,
+                "relation_type": item.relation_type,
+                "source": "manual",
+            }
+            for item in relations
+            if item.source_mention_id in mention_ids and item.target_mention_id in mention_ids
+        ]
+        db.add(AnnotationRevision(
+            sentence_id=sentence.id,
+            revision_number=1,
+            status=sentence.status,
+            entities_json=json.dumps(entity_payload, ensure_ascii=False),
+            relations_json=json.dumps(relation_payload, ensure_ascii=False),
+        ))
+        created += 1
+    if created:
+        db.commit()
+    return created
+
+
 def save_annotation(db: Session, sentence: Sentence, payload: AnnotationInput) -> int:
     existing_rows = list(db.scalars(select(EntityMention).where(EntityMention.sentence_id == sentence.id)))
     existing_ids = [item.id for item in existing_rows]

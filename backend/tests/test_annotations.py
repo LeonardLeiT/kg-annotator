@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.db import Base
 from app.models import AnnotationRevision, Document, EntityMention, Sentence
 from app.schemas import AnnotationInput, EntityInput
-from app.services.annotations import save_annotation
+from app.services.annotations import backfill_annotation_revisions, save_annotation
 from app.services.article_graph import build_article_graph
 from app.services.graph_export import GEXF_NS, build_gexf
 from xml.etree import ElementTree as ET
@@ -90,4 +90,36 @@ def test_each_manual_save_creates_an_immutable_revision_and_updates_latest_graph
         assert '"Mineral"' in revisions[1].entities_json
         latest = db.scalar(select(EntityMention))
         assert latest is not None and latest.entity_type == "Mineral"
+    engine.dispose()
+
+
+def test_existing_human_decisions_are_backfilled_once():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        document = Document(filename="paper.pdf", storage_path="paper.pdf")
+        db.add(document)
+        db.flush()
+        approved = Sentence(
+            document_id=document.id, ordinal=0, page_number=1, text="Quartz", status="approved"
+        )
+        skipped = Sentence(
+            document_id=document.id, ordinal=1, page_number=1, text="References", status="skipped"
+        )
+        db.add_all([approved, skipped])
+        db.flush()
+        db.add(EntityMention(
+            sentence_id=approved.id, text="Quartz", entity_type="Material",
+            start=0, end=6, source="manual", decision="manual",
+        ))
+        db.commit()
+
+        assert backfill_annotation_revisions(db) == 2
+        assert backfill_annotation_revisions(db) == 0
+        revisions = list(db.scalars(select(AnnotationRevision).order_by(AnnotationRevision.sentence_id)))
+        assert len(revisions) == 2
+        approved_revision = next(item for item in revisions if item.sentence_id == approved.id)
+        skipped_revision = next(item for item in revisions if item.sentence_id == skipped.id)
+        assert '"Quartz"' in approved_revision.entities_json
+        assert skipped_revision.entities_json == "[]"
     engine.dispose()
