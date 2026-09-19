@@ -8,6 +8,8 @@ type ContextRole = "previous" | "current" | "next";
 type EditableEntity = EntityCandidate & { enabled: boolean };
 type EditableRelation = RelationCandidate & { enabled: boolean };
 
+const REVIEWED_STATUSES = new Set(["approved", "uncertain", "skipped"]);
+
 const I18nContext = createContext<{ language: Language; t: (key: MessageKey, values?: Record<string, string | number>) => string }>({
   language: "zh",
   t: (key, values) => formatMessage("zh", key, values),
@@ -151,7 +153,18 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
   const [newType, setNewType] = useState("");
   const [message, setMessage] = useState("");
 
-  useEffect(() => { api.sentences(document.id).then(setSentences); }, [document.id]);
+  useEffect(() => {
+    api.sentences(document.id).then((items) => {
+      setSentences(items);
+      const earliestPending = items.findIndex((item) => !REVIEWED_STATUSES.has(item.status));
+      setIndex(earliestPending >= 0 ? earliestPending : 0);
+    });
+  }, [document.id]);
+  useEffect(() => {
+    globalThis.requestAnimationFrame(() => {
+      globalThis.document.querySelector(".sentence-item.active")?.scrollIntoView({ block: "center" });
+    });
+  }, [index]);
   useEffect(() => {
     const item = sentences[index];
     if (!item) return;
@@ -222,8 +235,12 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
       setEntities(correctedEntities.map((entity) => ({ ...entity, enabled: true })));
       setDetail((item) => item ? { ...item, status, revision_count: result.revision } : item);
       setMessage(t("savedRevision", { count: result.revision }));
-      setSentences((items) => items.map((s, i) => i === index ? { ...s, status } : s));
-      if (index + 1 < sentences.length) setIndex(index + 1);
+      const updatedSentences = sentences.map((sentence, sentenceIndex) =>
+        sentenceIndex === index ? { ...sentence, status } : sentence
+      );
+      setSentences(updatedSentences);
+      const earliestPending = updatedSentences.findIndex((sentence) => !REVIEWED_STATUSES.has(sentence.status));
+      if (earliestPending >= 0) setIndex(earliestPending);
     } catch (error) {
       setMessage(error instanceof Error ? t("saveFailed", { message: error.message }) : t("saveFailedGeneric"));
     }
