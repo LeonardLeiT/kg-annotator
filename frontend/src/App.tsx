@@ -205,6 +205,13 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
     }]);
   }
 
+  function removeEntity(entityId: string) {
+    setEntities((items) => items.filter((entity) => entity.id !== entityId));
+    setRelations((items) => items.filter((relation) =>
+      relation.source_entity_id !== entityId && relation.target_entity_id !== entityId
+    ));
+  }
+
   async function save(status: "approved" | "uncertain" | "skipped") {
     if (!detail) return;
     const enabledEntities = entities.filter((e) => e.enabled);
@@ -278,8 +285,8 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
     </section>
     <aside className="candidate-panel">
       <div className="section-title"><h2>{t("entities")}</h2><span>{enabledEntities.length}</span></div>
-      <div className="candidate-list">{entities.length === 0 && <div className="manual-empty">{t("noEntities")}<br/><small>{t("selectTextHint")}</small></div>}{entities.map((entity) => <div className={entity.enabled ? "candidate" : "candidate disabled"} key={entity.id}>
-        <button className="toggle" onClick={() => setEntities((items) => items.map((x) => x.id === entity.id ? { ...x, enabled: !x.enabled } : x))}>{entity.enabled ? "✓" : "+"}</button>
+      <div className="candidate-list">{enabledEntities.length === 0 && <div className="manual-empty">{t("noEntities")}<br/><small>{t("selectTextHint")}</small></div>}{enabledEntities.map((entity) => <div className="candidate" key={entity.id}>
+        <button className="toggle" aria-label={t("deleteEntity")} title={t("deleteEntity")} onClick={() => removeEntity(entity.id)}>✓</button>
         <div><strong>{entity.text}</strong><small>{t(entity.context_role === "previous" ? "previousContext" : entity.context_role === "next" ? "nextContext" : "currentSentence")}</small><input list="entity-type-options" value={entity.entity_type} aria-label={t("entityTypeLabel", { name: entity.text })} onChange={(e) => setEntities((items) => items.map((x) => x.id === entity.id ? { ...x, entity_type: e.target.value } : x))}/></div>
         <span className={`vote-badge vote-${entity.vote_count}`}>{entity.vote_count ? `${entity.vote_count}/3` : t("manual")}</span>
       </div>)}</div>
