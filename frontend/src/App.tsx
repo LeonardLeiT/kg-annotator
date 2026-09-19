@@ -18,13 +18,13 @@ function StatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
   const labels: Record<string, string> = {
     parsed: t("statusParsed"), queued: t("statusQueued"), extracting: t("statusExtracting"), reviewable: t("statusReviewable"),
-    approved: t("statusApproved"), skipped: t("statusSkipped"), uncertain: t("statusUncertain"), predicted: t("statusPredicted"), pending: t("statusPending"),
+    completed: t("statusCompleted"), approved: t("statusApproved"), skipped: t("statusSkipped"), uncertain: t("statusUncertain"), predicted: t("statusPredicted"), pending: t("statusPending"),
   };
   return <span className={`status status-${status}`}>{labels[status] || status}</span>;
 }
 
 function DocumentsPage({ onAnnotate, onDeleted }: { onAnnotate: (doc: DocumentItem) => void; onDeleted: (id: string) => void }) {
-  const { language, t } = useI18n();
+  const { t } = useI18n();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -37,22 +37,6 @@ function DocumentsPage({ onAnnotate, onDeleted }: { onAnnotate: (doc: DocumentIt
     setBusy(true); setMessage(t("parsingPdf"));
     try { await api.upload(file); setMessage(t("parsedPdf")); await refresh(); }
     catch (e) { setMessage((e as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  async function extract(doc: DocumentItem) {
-    setBusy(true);
-    try {
-      const { job_id } = await api.extract(doc.id);
-      while (true) {
-        const job = await api.job(job_id);
-        setMessage(language === "zh" ? `${job.message} ${Math.round(job.progress * 100)}%` : t("extractionProgress", { percent: Math.round(job.progress * 100) }));
-        if (job.status === "completed") break;
-        if (job.status === "failed") throw new Error(job.message);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-      await refresh();
-    } catch (e) { setMessage((e as Error).message); }
     finally { setBusy(false); }
   }
 
@@ -86,9 +70,8 @@ function DocumentsPage({ onAnnotate, onDeleted }: { onAnnotate: (doc: DocumentIt
           <div className="doc-icon">PDF</div>
           <div className="doc-main"><strong>{doc.filename}</strong><span>{doc.page_count} {t("pages")} · {doc.sentence_count} {t("sentences")}</span></div>
           <StatusBadge status={doc.status}/>
-          {doc.status === "parsed" && <button disabled={busy} onClick={() => extract(doc)}>{t("runExtraction")}</button>}
-          {doc.status === "reviewable" && <button className="primary" onClick={() => onAnnotate(doc)}>{t("startAnnotation")}</button>}
-          {doc.status === "completed" && <button onClick={() => onAnnotate(doc)}>{t("viewAnnotation")}</button>}
+          {["parsed", "reviewable"].includes(doc.status) && <button className="primary" onClick={() => onAnnotate(doc)}>{t("startAnnotation")}</button>}
+          {doc.status === "completed" && <button onClick={() => onAnnotate(doc)}>{t("continueAnnotation")}</button>}
           <button className="danger-button" disabled={busy || ["queued", "extracting"].includes(doc.status)} onClick={() => remove(doc)}>{t("delete")}</button>
         </article>)}</div>}
     </section>
@@ -223,7 +206,7 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
       if (enabledRelations.some((relation) => !relation.relation_type.trim())) {
         throw new Error(t("missingRelationType"));
       }
-      await api.annotate(detail.id, {
+      const result = await api.annotate(detail.id, {
         status,
         entities: correctedEntities.map((e) => ({
           client_id: e.id, text: e.text, entity_type: e.entity_type, start: e.start, end: e.end,
@@ -235,7 +218,8 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
         })),
       });
       setEntities(correctedEntities.map((entity) => ({ ...entity, enabled: true })));
-      setMessage(t("saved"));
+      setDetail((item) => item ? { ...item, status, revision_count: result.revision } : item);
+      setMessage(t("savedRevision", { count: result.revision }));
       setSentences((items) => items.map((s, i) => i === index ? { ...s, status } : s));
       if (index + 1 < sentences.length) setIndex(index + 1);
     } catch (error) {
@@ -256,7 +240,7 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
       </button>)}
     </aside>
     <section className="annotation-center">
-      <div className="sentence-meta"><span>{t("page", { number: detail.page_number })}</span><span>{detail.content_type === "formula" ? t("formula") : t("sentenceNumber", { number: detail.ordinal + 1 })}</span><span>{t("ontology")} v{ontology?.version}</span></div>
+      <div className="sentence-meta"><span>{t("page", { number: detail.page_number })}</span><span>{detail.content_type === "formula" ? t("formula") : t("sentenceNumber", { number: detail.ordinal + 1 })}</span><span>{t("revisionCount", { count: detail.revision_count })}</span><span>{t("ontology")} v{ontology?.version}</span></div>
       <div className="manual-annotation-hint"><strong>{t("manualAnnotation")}</strong><span>{t("manualHint")}</span></div>
       <div className="context"><small>{t("previousContext")}</small>{detail.context_before || "—"}</div>
       <div className={detail.content_type === "formula" ? "formula-unit" : ""}><HighlightedSentence text={detail.text} entities={entities} onSelection={(start, end, text) => { setSelected({ start, end, text }); setNewType(typeKeys[0] || ""); }}/></div>
@@ -438,14 +422,15 @@ function GraphPage({ document }: { document: DocumentItem }) {
   const [agreement, setAgreement] = useState<AgreementResult | null>(null);
   const [sampleSize, setSampleSize] = useState(50);
   const [seed, setSeed] = useState(42);
+  const [annotators, setAnnotators] = useState(2);
   const [error, setError] = useState("");
   useEffect(() => {
     api.articleGraph(document.id).then(setGraph).catch((e) => setError(e.message));
-    api.agreement(document.id, 50, 42).then(setAgreement).catch((e) => setError(e.message));
+    api.agreement(document.id, 50, 42, 2).then(setAgreement).catch((e) => setError(e.message));
   }, [document.id]);
   async function calculateAgreement() {
     try {
-      setAgreement(await api.agreement(document.id, sampleSize, seed));
+      setAgreement(await api.agreement(document.id, sampleSize, seed, annotators));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -458,11 +443,11 @@ function GraphPage({ document }: { document: DocumentItem }) {
     <section className="hero compact"><div><p className="eyebrow">ARTICLE KNOWLEDGE GRAPH</p><h1>{document.filename}</h1><p>{t("graphIntro")}</p></div><div className="graph-hero-actions"><a className="gephi-button" href={api.exportUrl(document.id, "gexf")}>{t("exportGephi")}</a><div className="graph-progress"><strong>{completion}%</strong><span>{t("reviewProgress")}</span></div></div></section>
     <section className="graph-stats"><div><strong>{graph.stats.reviewed}</strong><span>{t("reviewed", { total: graph.stats.sentences })}</span></div><div><strong>{graph.stats.skipped}</strong><span>{t("passed")}</span></div><div><strong>{graph.stats.nodes}</strong><span>{t("canonicalEntities")}</span></div><div><strong>{graph.stats.edges}</strong><span>{t("relations")}</span></div></section>
     <section className="panel agreement-panel">
-      <div className="agreement-header"><div><h2>{t("agreementTitle")}</h2><p>{t("agreementIntro")}</p></div><div className="agreement-controls"><label>{t("sampleSize")}<input type="number" min="1" max="1000" value={sampleSize} onChange={(event) => setSampleSize(Math.max(1, Number(event.target.value)))}/></label><label>{t("randomSeed")}<input type="number" min="0" value={seed} onChange={(event) => setSeed(Math.max(0, Number(event.target.value)))}/></label><button onClick={calculateAgreement}>{t("recalculate")}</button></div></div>
+      <div className="agreement-header"><div><h2>{t("agreementTitle")}</h2><p>{t("agreementIntro")}</p></div><div className="agreement-controls"><label>{t("annotationRounds")}<input type="number" min="2" max="100" value={annotators} onChange={(event) => setAnnotators(Math.max(2, Number(event.target.value)))}/></label><label>{t("sampleSize")}<input type="number" min="1" max="1000" value={sampleSize} onChange={(event) => setSampleSize(Math.max(1, Number(event.target.value)))}/></label><label>{t("randomSeed")}<input type="number" min="0" value={seed} onChange={(event) => setSeed(Math.max(0, Number(event.target.value)))}/></label><button onClick={calculateAgreement}>{t("recalculate")}</button></div></div>
       {!agreement ? <div className="empty">{t("calculatingAgreement")}</div> : <><div className="agreement-metrics">{([[t("entities"), agreement.entity], [t("relations"), agreement.relation], [t("overall"), agreement.overall]] as const).map(([label, metric]) => {
         const interpretation = language === "zh" ? metric.interpretation : ({ "无法计算": t("agreementUndefined"), "低于随机一致": t("agreementBelowChance"), "轻微一致": t("agreementSlight"), "一般一致": t("agreementFair"), "中等一致": t("agreementModerate"), "较强一致": t("agreementSubstantial"), "高度一致": t("agreementAlmostPerfect") }[metric.interpretation] || metric.interpretation);
         return <div key={label}><span>{label}</span><strong>{metric.kappa === null ? "—" : metric.kappa.toFixed(3)}</strong><small>{interpretation} · {t("candidateItems", { count: metric.items })}</small></div>;
-      })}</div><div className="agreement-footnote">{t("agreementFootnote", { eligible: agreement.eligible_sentences, sampled: agreement.sampled_sentences, seed: agreement.seed })}{agreement.sampled_sentences > 0 && ` · ${t("sentenceOrdinals", { ordinals: agreement.sampled_ordinals.join(", ") })}`}</div></>}
+      })}</div><div className="agreement-footnote">{t("agreementFootnote", { rounds: agreement.annotators, eligible: agreement.eligible_sentences, sampled: agreement.sampled_sentences, seed: agreement.seed })}{agreement.sampled_sentences > 0 && ` · ${t("sentenceOrdinals", { ordinals: agreement.sampled_ordinals.join(", ") })}`}</div></>}
     </section>
     <KnowledgeGraphView graph={graph}/>
     <section className="graph-grid">

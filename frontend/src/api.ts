@@ -20,14 +20,12 @@ export const api = {
     body.append("file", file);
     return request<DocumentItem>("/documents", { method: "POST", body });
   },
-  extract: (id: string) => request<{ job_id: string }>(`/documents/${id}/extract`, { method: "POST" }),
-  job: (id: string) => request<{ status: string; progress: number; message: string }>(`/jobs/${id}`),
   sentences: (id: string) => request<SentenceItem[]>(`/documents/${id}/sentences`),
   sentence: (id: string) => request<SentenceDetail>(`/sentences/${id}`),
   formulaImageUrl: (id: string) => `${BASE}/sentences/${id}/formula-image`,
   articleGraph: (id: string) => request<ArticleGraph>(`/documents/${id}/graph`),
-  agreement: (id: string, sampleSize = 50, seed = 42) => request<AgreementResult>(`/documents/${id}/agreement?sample_size=${sampleSize}&seed=${seed}`),
-  annotate: (id: string, data: unknown) => request(`/sentences/${id}/annotation`, {
+  agreement: (id: string, sampleSize = 50, seed = 42, annotators = 2) => request<AgreementResult>(`/documents/${id}/agreement?sample_size=${sampleSize}&seed=${seed}&annotators=${annotators}`),
+  annotate: (id: string, data: unknown) => request<{ status: string; revision: number }>(`/sentences/${id}/annotation`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
   }),
   generateMerges: () => request<{ auto_merged: number; candidates: number; pairs_scored: number }>("/entity-resolution/generate", { method: "POST" }),

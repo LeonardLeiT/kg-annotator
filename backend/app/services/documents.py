@@ -291,7 +291,7 @@ def parse_pdf(db: Session, document: Document) -> Document:
 
     document.page_count = page_count
     document.sentence_count = len(rows)
-    document.status = "parsed"
+    document.status = "reviewable"
     db.commit()
     db.refresh(document)
     return document

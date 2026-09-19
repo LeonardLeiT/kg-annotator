@@ -42,7 +42,7 @@ export type SentenceDetail = SentenceItem & {
   has_formula_image: boolean;
   entities: EntityCandidate[];
   relations: RelationCandidate[];
-  runs: Array<{ run_index: number; model: string; output: unknown }>;
+  revision_count: number;
 };
 
 export type Ontology = {

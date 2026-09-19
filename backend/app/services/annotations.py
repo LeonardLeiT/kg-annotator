@@ -3,11 +3,11 @@ import json
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from ..models import CanonicalEntity, Document, EntityMention, RelationMention, Sentence
+from ..models import AnnotationRevision, CanonicalEntity, Document, EntityMention, RelationMention, Sentence
 from ..schemas import AnnotationInput
 
 
-def save_annotation(db: Session, sentence: Sentence, payload: AnnotationInput) -> None:
+def save_annotation(db: Session, sentence: Sentence, payload: AnnotationInput) -> int:
     existing_rows = list(db.scalars(select(EntityMention).where(EntityMention.sentence_id == sentence.id)))
     existing_ids = [item.id for item in existing_rows]
     old_canonical_ids = {item.canonical_entity_id for item in existing_rows if item.canonical_entity_id}
@@ -19,6 +19,20 @@ def save_annotation(db: Session, sentence: Sentence, payload: AnnotationInput) -
     # annotation, count it as reviewed, and keep it out of the article KG.
     entities = [] if payload.status == "skipped" else payload.entities
     relations = [] if payload.status == "skipped" else payload.relations
+
+    previous_revision = db.scalar(
+        select(func.max(AnnotationRevision.revision_number)).where(
+            AnnotationRevision.sentence_id == sentence.id
+        )
+    ) or 0
+    revision_number = previous_revision + 1
+    db.add(AnnotationRevision(
+        sentence_id=sentence.id,
+        revision_number=revision_number,
+        status=payload.status,
+        entities_json=json.dumps([item.model_dump() for item in entities], ensure_ascii=False),
+        relations_json=json.dumps([item.model_dump() for item in relations], ensure_ascii=False),
+    ))
 
     mentions: dict[str, EntityMention] = {}
     for item in entities:
@@ -80,3 +94,4 @@ def save_annotation(db: Session, sentence: Sentence, payload: AnnotationInput) -
         if document:
             document.status = "completed"
     db.commit()
+    return revision_number

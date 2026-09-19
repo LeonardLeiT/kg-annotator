@@ -104,7 +104,7 @@ class EntityMention(Base):
     entity_type: Mapped[str] = mapped_column(String(128))
     start: Mapped[int] = mapped_column(Integer)
     end: Mapped[int] = mapped_column(Integer)
-    source: Mapped[str] = mapped_column(String(32), default="llm")
+    source: Mapped[str] = mapped_column(String(32), default="manual")
     decision: Mapped[str] = mapped_column(String(32), default="accepted")
     canonical_entity_id: Mapped[str | None] = mapped_column(ForeignKey("canonical_entities.id"), nullable=True, index=True)
 
@@ -117,7 +117,22 @@ class RelationMention(Base):
     source_mention_id: Mapped[str] = mapped_column(ForeignKey("entity_mentions.id"))
     target_mention_id: Mapped[str] = mapped_column(ForeignKey("entity_mentions.id"))
     relation_type: Mapped[str] = mapped_column(String(128))
-    source: Mapped[str] = mapped_column(String(32), default="llm")
+    source: Mapped[str] = mapped_column(String(32), default="manual")
+
+
+class AnnotationRevision(Base):
+    """Immutable snapshot created every time a sentence annotation is saved."""
+
+    __tablename__ = "annotation_revisions"
+    __table_args__ = (UniqueConstraint("sentence_id", "revision_number"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    sentence_id: Mapped[str] = mapped_column(ForeignKey("sentences.id"), index=True)
+    revision_number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32))
+    entities_json: Mapped[str] = mapped_column(Text, default="[]")
+    relations_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class CanonicalEntity(Base):

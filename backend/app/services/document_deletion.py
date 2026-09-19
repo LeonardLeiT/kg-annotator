@@ -6,6 +6,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import (
+    AnnotationRevision,
     CanonicalEntity,
     ConsensusEntity,
     ConsensusRelation,
@@ -73,6 +74,7 @@ def delete_document(db: Session, document: Document) -> dict[str, int]:
             )
 
         db.execute(delete(FormulaAsset).where(FormulaAsset.sentence_id.in_(sentence_ids)))
+        db.execute(delete(AnnotationRevision).where(AnnotationRevision.sentence_id.in_(sentence_ids)))
         db.execute(delete(ExtractionRun).where(ExtractionRun.sentence_id.in_(sentence_ids)))
         db.execute(delete(ConsensusEntity).where(ConsensusEntity.sentence_id.in_(sentence_ids)))
         db.execute(delete(EntityMention).where(EntityMention.sentence_id.in_(sentence_ids)))

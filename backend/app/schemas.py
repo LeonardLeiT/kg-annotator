@@ -35,15 +35,15 @@ class EntityInput(BaseModel):
     entity_type: str
     start: int
     end: int
-    source: Literal["llm", "manual"] = "llm"
-    decision: Literal["accepted", "modified", "manual"] = "accepted"
+    source: Literal["manual"] = "manual"
+    decision: Literal["manual"] = "manual"
 
 
 class RelationInput(BaseModel):
     source_client_id: str
     relation_type: str
     target_client_id: str
-    source: Literal["llm", "manual"] = "llm"
+    source: Literal["manual"] = "manual"
 
 
 class AnnotationInput(BaseModel):

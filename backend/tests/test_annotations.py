@@ -2,8 +2,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db import Base
-from app.models import Document, EntityMention, Sentence
-from app.schemas import AnnotationInput
+from app.models import AnnotationRevision, Document, EntityMention, Sentence
+from app.schemas import AnnotationInput, EntityInput
 from app.services.annotations import save_annotation
 from app.services.article_graph import build_article_graph
 from app.services.graph_export import GEXF_NS, build_gexf
@@ -62,3 +62,32 @@ def test_gexf_export_preserves_graph_attributes():
     assert node is not None and node.attrib["label"] == "Alumina & MgO"
     assert edge is not None and edge.attrib["label"] == "RELATED_TO"
     assert edge.attrib["weight"] == "3"
+
+
+def test_each_manual_save_creates_an_immutable_revision_and_updates_latest_graph():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        document = Document(filename="paper.pdf", storage_path="paper.pdf", status="reviewable")
+        db.add(document)
+        db.flush()
+        sentence = Sentence(document_id=document.id, ordinal=0, page_number=1, text="Quartz is stable.")
+        db.add(sentence)
+        db.commit()
+
+        first = AnnotationInput(entities=[EntityInput(
+            client_id="q", text="Quartz", entity_type="Material", start=0, end=6
+        )])
+        assert save_annotation(db, sentence, first) == 1
+        second = AnnotationInput(entities=[EntityInput(
+            client_id="q2", text="Quartz", entity_type="Mineral", start=0, end=6
+        )])
+        assert save_annotation(db, sentence, second) == 2
+
+        revisions = list(db.scalars(select(AnnotationRevision).order_by(AnnotationRevision.revision_number)))
+        assert [item.revision_number for item in revisions] == [1, 2]
+        assert '"Material"' in revisions[0].entities_json
+        assert '"Mineral"' in revisions[1].entities_json
+        latest = db.scalar(select(EntityMention))
+        assert latest is not None and latest.entity_type == "Mineral"
+    engine.dispose()
