@@ -144,6 +144,7 @@ function RelationTypePicker({ relation, entities, ontology, onChange }: {
 
 function AnnotationPage({ document, ontology }: { document: DocumentItem; ontology: Ontology | null }) {
   const { language, t } = useI18n();
+  const sentenceListRef = useRef<HTMLElement>(null);
   const [sentences, setSentences] = useState<SentenceItem[]>([]);
   const [index, setIndex] = useState(0);
   const [detail, setDetail] = useState<SentenceDetail | null>(null);
@@ -162,9 +163,13 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
   }, [document.id]);
   useEffect(() => {
     globalThis.requestAnimationFrame(() => {
-      globalThis.document.querySelector(".sentence-item.active")?.scrollIntoView({ block: "center" });
+      const container = sentenceListRef.current;
+      const active = container?.querySelector<HTMLElement>(`[data-sentence-index="${index}"]`);
+      if (container && active) {
+        container.scrollTop = active.offsetTop - container.clientHeight / 2 + active.clientHeight / 2;
+      }
     });
-  }, [index]);
+  }, [index, sentences.length]);
   useEffect(() => {
     const item = sentences[index];
     if (!item) return;
@@ -252,9 +257,9 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
 
   return <main className="annotation-page">
     <datalist id="entity-type-options">{typeKeys.map((key) => <option value={key} key={key}>{language === "zh" ? ontology?.entity_types[key]?.label : humanizeOntologyKey(key)}</option>)}</datalist>
-    <aside className="sentence-list">
+    <aside className="sentence-list" ref={sentenceListRef}>
       <div className="aside-title"><strong>{document.filename}</strong><span>{index + 1} / {sentences.length}</span></div>
-      {sentences.map((sentence, i) => <button className={i === index ? "sentence-item active" : "sentence-item"} key={sentence.id} onClick={() => setIndex(i)}>
+      {sentences.map((sentence, i) => <button className={i === index ? "sentence-item active" : "sentence-item"} data-sentence-index={i} key={sentence.id} onClick={() => setIndex(i)}>
         <span>{sentence.ordinal + 1}</span><p className={sentence.content_type === "formula" ? "formula-preview" : ""}>{sentence.text}</p><StatusBadge status={sentence.status}/>
       </button>)}
     </aside>
