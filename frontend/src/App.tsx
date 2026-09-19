@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import type { AgreementResult, ArticleGraph, DocumentItem, EntityCandidate, MergeCandidate, Ontology, RelationCandidate, SentenceDetail, SentenceItem } from "./types";
 import { formatMessage, humanizeOntologyKey, type Language, type MessageKey } from "./i18n";
@@ -145,6 +145,7 @@ function RelationTypePicker({ relation, entities, ontology, onChange }: {
 function AnnotationPage({ document, ontology }: { document: DocumentItem; ontology: Ontology | null }) {
   const { language, t } = useI18n();
   const sentenceListRef = useRef<HTMLElement>(null);
+  const activeSentenceRef = useRef<HTMLButtonElement>(null);
   const [sentences, setSentences] = useState<SentenceItem[]>([]);
   const [index, setIndex] = useState(0);
   const [detail, setDetail] = useState<SentenceDetail | null>(null);
@@ -161,14 +162,16 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
       setIndex(earliestPending >= 0 ? earliestPending : 0);
     });
   }, [document.id]);
-  useEffect(() => {
-    globalThis.requestAnimationFrame(() => {
-      const container = sentenceListRef.current;
-      const active = container?.querySelector<HTMLElement>(`[data-sentence-index="${index}"]`);
-      if (container && active) {
-        container.scrollTop = active.offsetTop - container.clientHeight / 2 + active.clientHeight / 2;
-      }
-    });
+  useLayoutEffect(() => {
+    const scrollActiveSentence = () => {
+      activeSentenceRef.current?.scrollIntoView({ block: "center", inline: "nearest" });
+    };
+    const frame = globalThis.requestAnimationFrame(scrollActiveSentence);
+    const fallback = globalThis.setTimeout(scrollActiveSentence, 100);
+    return () => {
+      globalThis.cancelAnimationFrame(frame);
+      globalThis.clearTimeout(fallback);
+    };
   }, [index, sentences.length]);
   useEffect(() => {
     const item = sentences[index];
@@ -259,7 +262,7 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
     <datalist id="entity-type-options">{typeKeys.map((key) => <option value={key} key={key}>{language === "zh" ? ontology?.entity_types[key]?.label : humanizeOntologyKey(key)}</option>)}</datalist>
     <aside className="sentence-list" ref={sentenceListRef}>
       <div className="aside-title"><strong>{document.filename}</strong><span>{index + 1} / {sentences.length}</span></div>
-      {sentences.map((sentence, i) => <button className={i === index ? "sentence-item active" : "sentence-item"} data-sentence-index={i} key={sentence.id} onClick={() => setIndex(i)}>
+      {sentences.map((sentence, i) => <button ref={i === index ? activeSentenceRef : undefined} className={i === index ? "sentence-item active" : "sentence-item"} data-sentence-index={i} key={sentence.id} onClick={() => setIndex(i)}>
         <span>{sentence.ordinal + 1}</span><p className={sentence.content_type === "formula" ? "formula-preview" : ""}>{sentence.text}</p><StatusBadge status={sentence.status}/>
       </button>)}
     </aside>
