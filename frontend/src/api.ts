@@ -1,0 +1,41 @@
+import type { AgreementResult, ArticleGraph, DocumentItem, MergeCandidate, Ontology, SentenceDetail, SentenceItem } from "./types";
+
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${BASE}${path}`, options);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(body.detail || "请求失败");
+  }
+  return response.json();
+}
+
+export const api = {
+  documents: () => request<DocumentItem[]>("/documents"),
+  deleteDocument: (id: string) => request<{ deleted: boolean }>(`/documents/${id}`, { method: "DELETE" }),
+  ontology: () => request<Ontology>("/ontology"),
+  upload: async (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<DocumentItem>("/documents", { method: "POST", body });
+  },
+  extract: (id: string) => request<{ job_id: string }>(`/documents/${id}/extract`, { method: "POST" }),
+  job: (id: string) => request<{ status: string; progress: number; message: string }>(`/jobs/${id}`),
+  sentences: (id: string) => request<SentenceItem[]>(`/documents/${id}/sentences`),
+  sentence: (id: string) => request<SentenceDetail>(`/sentences/${id}`),
+  formulaImageUrl: (id: string) => `${BASE}/sentences/${id}/formula-image`,
+  articleGraph: (id: string) => request<ArticleGraph>(`/documents/${id}/graph`),
+  agreement: (id: string, sampleSize = 50, seed = 42) => request<AgreementResult>(`/documents/${id}/agreement?sample_size=${sampleSize}&seed=${seed}`),
+  annotate: (id: string, data: unknown) => request(`/sentences/${id}/annotation`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+  }),
+  generateMerges: () => request<{ auto_merged: number; candidates: number; pairs_scored: number }>("/entity-resolution/generate", { method: "POST" }),
+  mergeCandidates: () => request<MergeCandidate[]>("/entity-resolution/candidates"),
+  decideMerge: (id: string, decision: string, preferredName?: string) => request(`/entity-resolution/candidates/${id}/${decision}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(preferredName ? { preferred_name: preferredName } : {}),
+  }),
+  exportUrl: (documentId: string, format: "jsonl" | "csv" | "gexf") => `${BASE}/documents/${documentId}/export/${format}`,
+};

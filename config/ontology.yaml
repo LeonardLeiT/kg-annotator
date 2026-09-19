@@ -1,0 +1,235 @@
+version: "1.2"
+entity_types:
+  Material:
+    label: 材料
+    description: 材料、化合物、矿物或物质名称
+  Property:
+    label: 性质
+    description: 材料的物理、化学或力学性质
+  Process:
+    label: 工艺
+    description: 制备、处理、反应或加工过程
+  Condition:
+    label: 条件
+    description: 温度、压力、时间、环境等条件
+  Structure:
+    label: 结构
+    description: 晶体、微观、界面或几何结构
+  Phase:
+    label: 相
+    description: 晶相、物相或相态
+  Defect:
+    label: 缺陷
+    description: 空位、位错、晶界等缺陷
+  Phenomenon:
+    label: 现象
+    description: 实验或理论观察到的现象
+  Mechanism:
+    label: 机制
+    description: 物理、化学或演化机制
+  Method:
+    label: 方法
+    description: 计算、实验、表征或分析方法
+  Instrument:
+    label: 仪器
+    description: 实验仪器或测量设备
+  Model:
+    label: 模型
+    description: 理论模型、计算模型或方程
+  Parameter:
+    label: 参数
+    description: 模型参数或实验参数
+  Value:
+    label: 数值
+    description: 测量值、计算值或数值范围
+  Unit:
+    label: 单位
+    description: 物理量单位
+  Application:
+    label: 应用
+    description: 材料或方法的用途及应用场景
+relation_types:
+  HAS_PROPERTY:
+    label: 具有性质
+    subject_types: [Material]
+    object_types: [Property]
+  USED_IN:
+    label: 用于工艺
+    subject_types: [Material]
+    object_types: [Process]
+  UNDER_CONDITION:
+    label: 条件
+    subject_types: [Property, Process]
+    object_types: [Condition]
+  HAS_STRUCTURE:
+    label: 具有结构
+    subject_types: [Material, Phase]
+    object_types: [Structure]
+  HAS_PHASE:
+    label: 具有相
+    subject_types: [Material]
+    object_types: [Phase]
+  HAS_DEFECT:
+    label: 具有缺陷
+    subject_types: [Material, Structure]
+    object_types: [Defect]
+  PRODUCED_BY:
+    label: 由工艺产生
+    subject_types: [Material, Structure, Phase]
+    object_types: [Process]
+  TRANSFORMS_TO:
+    label: 转变为
+    subject_types: [Material, Phase, Structure]
+    object_types: [Material, Phase, Structure]
+  CAUSES:
+    label: 导致
+    subject_types: [Process, Condition, Defect, Mechanism, Phenomenon]
+    object_types: [Property, Process, Defect, Phenomenon, Mechanism]
+  INFLUENCES:
+    label: 影响
+    subject_types: [Material, Process, Condition, Structure, Defect, Parameter]
+    object_types: [Property, Process, Structure, Phenomenon]
+  DEPENDS_ON:
+    label: 依赖于
+    subject_types: [Property, Process, Phenomenon, Model]
+    object_types: [Condition, Parameter, Material, Structure]
+  MEASURED_BY:
+    label: 由方法测量
+    subject_types: [Property, Parameter, Phenomenon]
+    object_types: [Method, Instrument]
+  HAS_VALUE:
+    label: 数值为
+    subject_types: [Property, Parameter, Condition]
+    object_types: [Value]
+  HAS_UNIT:
+    label: 单位为
+    subject_types: [Property, Parameter, Value]
+    object_types: [Unit]
+  PART_OF:
+    label: 属于
+    subject_types: [Material, Structure, Phase, Defect, Process]
+    object_types: [Material, Structure, Process]
+  COMPOSED_OF:
+    label: 由其组成
+    subject_types: [Material, Structure]
+    object_types: [Material, Structure, Phase]
+  INTERACTS_WITH:
+    label: 相互作用
+    subject_types: [Material, Structure, Defect, Phenomenon]
+    object_types: [Material, Structure, Defect, Phenomenon]
+  CORRELATES_WITH:
+    label: 相关
+    subject_types: [Property, Parameter, Phenomenon]
+    object_types: [Property, Parameter, Phenomenon]
+  COMPARED_WITH:
+    label: 与其比较
+    subject_types: [Material, Property, Method, Model]
+    object_types: [Material, Property, Method, Model]
+  APPLIED_TO:
+    label: 应用于
+    subject_types: [Material, Method, Model, Process]
+    object_types: [Application, Material, Process]
+  SUPPORTS:
+    label: 支持
+    subject_types: [Method, Phenomenon, Model]
+    object_types: [Mechanism, Model, Phenomenon]
+  CONTRADICTS:
+    label: 与其矛盾
+    subject_types: [Method, Phenomenon, Model]
+    object_types: [Mechanism, Model, Phenomenon]
+  RELATED_TO:
+    label: 相关于
+    subject_types: []
+    object_types: []
+  DESCRIBED_BY:
+    label: 由模型或参数描述
+    subject_types: [Material, Property, Process, Structure, Phase, Phenomenon, Mechanism]
+    object_types: [Model, Parameter]
+  PREDICTED_BY:
+    label: 由模型预测
+    subject_types: [Property, Structure, Phase, Phenomenon, Mechanism]
+    object_types: [Model, Method]
+  CALCULATED_BY:
+    label: 由方法计算
+    subject_types: [Property, Parameter, Value, Phenomenon]
+    object_types: [Method, Model]
+  DERIVED_FROM:
+    label: 推导自
+    subject_types: [Model, Parameter, Property, Value]
+    object_types: [Model, Parameter, Property, Value]
+  VALIDATED_BY:
+    label: 由实验或方法验证
+    subject_types: [Model, Mechanism, Property, Phenomenon]
+    object_types: [Method, Instrument, Phenomenon]
+  OBSERVED_BY:
+    label: 由方法观测
+    subject_types: [Structure, Phase, Defect, Phenomenon]
+    object_types: [Method, Instrument]
+  CHARACTERIZED_BY:
+    label: 由方法表征
+    subject_types: [Material, Structure, Phase, Defect]
+    object_types: [Method, Instrument, Property]
+  FORMS:
+    label: 形成
+    subject_types: [Material, Process, Phase, Structure]
+    object_types: [Material, Phase, Structure, Defect]
+  CONTAINS:
+    label: 包含
+    subject_types: [Material, Structure, Phase]
+    object_types: [Material, Structure, Phase, Defect]
+  LOCATED_IN:
+    label: 位于
+    subject_types: [Material, Structure, Phase, Defect]
+    object_types: [Material, Structure, Phase]
+  OCCURS_AT:
+    label: 发生于条件
+    subject_types: [Process, Phenomenon, Mechanism, Phase]
+    object_types: [Condition, Structure]
+  REQUIRES:
+    label: 需要
+    subject_types: [Process, Method, Mechanism, Application]
+    object_types: [Material, Condition, Parameter, Instrument]
+  STABILIZES:
+    label: 稳定
+    subject_types: [Material, Structure, Condition, Process, Mechanism]
+    object_types: [Material, Structure, Phase]
+  DESTABILIZES:
+    label: 使不稳定
+    subject_types: [Condition, Process, Defect, Mechanism]
+    object_types: [Material, Structure, Phase]
+  INCREASES:
+    label: 提高
+    subject_types: [Material, Process, Condition, Structure, Parameter, Mechanism]
+    object_types: [Property, Parameter, Value, Phenomenon]
+  DECREASES:
+    label: 降低
+    subject_types: [Material, Process, Condition, Structure, Parameter, Mechanism]
+    object_types: [Property, Parameter, Value, Phenomenon]
+  PROMOTES:
+    label: 促进
+    subject_types: [Material, Process, Condition, Structure, Defect, Mechanism]
+    object_types: [Process, Phase, Phenomenon, Mechanism]
+  INHIBITS:
+    label: 抑制
+    subject_types: [Material, Process, Condition, Structure, Defect, Mechanism]
+    object_types: [Process, Phase, Phenomenon, Mechanism]
+  EQUILIBRATES_WITH:
+    label: 与其平衡
+    subject_types: [Material, Phase, Structure]
+    object_types: [Material, Phase, Structure]
+  MORE_STABLE_THAN:
+    label: 比其更稳定
+    subject_types: [Material, Phase, Structure]
+    object_types: [Material, Phase, Structure]
+  HIGHER_THAN:
+    label: 高于
+    subject_types: [Property, Parameter, Value]
+    object_types: [Property, Parameter, Value]
+  LOWER_THAN:
+    label: 低于
+    subject_types: [Property, Parameter, Value]
+    object_types: [Property, Parameter, Value]
+  EQUIVALENT_TO:
+    label: 等价于
+    subject_types: []
+    object_types: []
