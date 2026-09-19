@@ -35,6 +35,7 @@ class EntityInput(BaseModel):
     entity_type: str
     start: int
     end: int
+    context_role: Literal["previous", "current", "next"] = "current"
     source: Literal["manual"] = "manual"
     decision: Literal["manual"] = "manual"
 

@@ -4,6 +4,7 @@ import type { AgreementResult, ArticleGraph, DocumentItem, EntityCandidate, Merg
 import { formatMessage, humanizeOntologyKey, type Language, type MessageKey } from "./i18n";
 
 type Page = "documents" | "annotation" | "graph" | "merge";
+type ContextRole = "previous" | "current" | "next";
 type EditableEntity = EntityCandidate & { enabled: boolean };
 type EditableRelation = RelationCandidate & { enabled: boolean };
 
@@ -146,7 +147,7 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
   const [detail, setDetail] = useState<SentenceDetail | null>(null);
   const [entities, setEntities] = useState<EditableEntity[]>([]);
   const [relations, setRelations] = useState<EditableRelation[]>([]);
-  const [selected, setSelected] = useState<{ start: number; end: number; text: string } | null>(null);
+  const [selected, setSelected] = useState<{ start: number; end: number; text: string; context_role: ContextRole } | null>(null);
   const [newType, setNewType] = useState("");
   const [message, setMessage] = useState("");
 
@@ -167,7 +168,7 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
     if (!selected || !newType) return;
     setEntities((items) => [...items, {
       id: crypto.randomUUID(), text: selected.text, entity_type: newType,
-      start: selected.start, end: selected.end, vote_count: 0,
+      start: selected.start, end: selected.end, context_role: selected.context_role, vote_count: 0,
       boundary_conflict: false, type_conflict: false, enabled: true,
     }]);
     setSelected(null);
@@ -188,12 +189,13 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
     const enabledEntities = entities.filter((e) => e.enabled);
     try {
       const correctedEntities = (status === "skipped" ? [] : enabledEntities).map((entity) => {
-        if (detail.text.slice(entity.start, entity.end) === entity.text) return entity;
+        const sourceText = entity.context_role === "previous" ? (detail.context_before || "") : entity.context_role === "next" ? (detail.context_after || "") : detail.text;
+        if (sourceText.slice(entity.start, entity.end) === entity.text) return entity;
         const starts: number[] = [];
-        let cursor = detail.text.indexOf(entity.text);
+        let cursor = sourceText.indexOf(entity.text);
         while (cursor >= 0) {
           starts.push(cursor);
-          cursor = detail.text.indexOf(entity.text, cursor + 1);
+          cursor = sourceText.indexOf(entity.text, cursor + 1);
         }
         if (starts.length !== 1) throw new Error(t("entityPositionInvalid", { name: entity.text }));
         return { ...entity, start: starts[0], end: starts[0] + entity.text.length };
@@ -210,7 +212,7 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
         status,
         entities: correctedEntities.map((e) => ({
           client_id: e.id, text: e.text, entity_type: e.entity_type, start: e.start, end: e.end,
-          source: "manual", decision: "manual",
+          context_role: e.context_role, source: "manual", decision: "manual",
         })),
         relations: enabledRelations.map((r) => ({
           source_client_id: r.source_entity_id, target_client_id: r.target_entity_id,
@@ -242,18 +244,18 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
     <section className="annotation-center">
       <div className="sentence-meta"><span>{t("page", { number: detail.page_number })}</span><span>{detail.content_type === "formula" ? t("formula") : t("sentenceNumber", { number: detail.ordinal + 1 })}</span><span>{t("revisionCount", { count: detail.revision_count })}</span><span>{t("ontology")} v{ontology?.version}</span></div>
       <div className="manual-annotation-hint"><strong>{t("manualAnnotation")}</strong><span>{t("manualHint")}</span></div>
-      <div className="context"><small>{t("previousContext")}</small>{detail.context_before || "—"}</div>
-      <div className={detail.content_type === "formula" ? "formula-unit" : ""}><HighlightedSentence text={detail.text} entities={entities} onSelection={(start, end, text) => { setSelected({ start, end, text }); setNewType(typeKeys[0] || ""); }}/></div>
+      <div className="context selectable-context"><small>{t("previousContext")}</small>{detail.context_before ? <HighlightedSentence text={detail.context_before} entities={entities.filter((entity) => entity.context_role === "previous")} onSelection={(start, end, text) => { setSelected({ start, end, text, context_role: "previous" }); setNewType(typeKeys[0] || ""); }}/> : "—"}</div>
+      <div className={detail.content_type === "formula" ? "formula-unit" : ""}><HighlightedSentence text={detail.text} entities={entities.filter((entity) => entity.context_role === "current")} onSelection={(start, end, text) => { setSelected({ start, end, text, context_role: "current" }); setNewType(typeKeys[0] || ""); }}/></div>
       {detail.has_formula_image && <figure className="formula-source"><figcaption>{t("originalFormula")}</figcaption><img src={api.formulaImageUrl(detail.id)} alt={t("originalFormula")}/></figure>}
-      <div className="context"><small>{t("nextContext")}</small>{detail.context_after || "—"}</div>
-      {selected && <div className="selection-bar"><span>{t("newEntity", { text: selected.text })}</span><input list="entity-type-options" value={newType} placeholder={t("entityTypePlaceholder")} onChange={(e) => setNewType(e.target.value)}/><button onClick={addSelected}>{t("add")}</button><button className="ghost" onClick={() => setSelected(null)}>{t("cancel")}</button></div>}
+      <div className="context selectable-context"><small>{t("nextContext")}</small>{detail.context_after ? <HighlightedSentence text={detail.context_after} entities={entities.filter((entity) => entity.context_role === "next")} onSelection={(start, end, text) => { setSelected({ start, end, text, context_role: "next" }); setNewType(typeKeys[0] || ""); }}/> : "—"}</div>
+      {selected && <div className="selection-bar"><span>{t("newContextEntity", { scope: t(selected.context_role === "previous" ? "previousContext" : selected.context_role === "next" ? "nextContext" : "currentSentence"), text: selected.text })}</span><input list="entity-type-options" value={newType} placeholder={t("entityTypePlaceholder")} onChange={(e) => setNewType(e.target.value)}/><button onClick={addSelected}>{t("add")}</button><button className="ghost" onClick={() => setSelected(null)}>{t("cancel")}</button></div>}
       <div className="annotation-actions"><button className="pass-button" onClick={() => save("skipped")} title={t("passTitle")}>{t("pass")}</button><button className="ghost" onClick={() => save("uncertain")}>{t("markUncertain")}</button><span>{message}</span><button className="primary" onClick={() => save("approved")}>{t("saveNext")}</button></div>
     </section>
     <aside className="candidate-panel">
       <div className="section-title"><h2>{t("entities")}</h2><span>{enabledEntities.length}</span></div>
       <div className="candidate-list">{entities.length === 0 && <div className="manual-empty">{t("noEntities")}<br/><small>{t("selectTextHint")}</small></div>}{entities.map((entity) => <div className={entity.enabled ? "candidate" : "candidate disabled"} key={entity.id}>
         <button className="toggle" onClick={() => setEntities((items) => items.map((x) => x.id === entity.id ? { ...x, enabled: !x.enabled } : x))}>{entity.enabled ? "✓" : "+"}</button>
-        <div><strong>{entity.text}</strong><input list="entity-type-options" value={entity.entity_type} aria-label={t("entityTypeLabel", { name: entity.text })} onChange={(e) => setEntities((items) => items.map((x) => x.id === entity.id ? { ...x, entity_type: e.target.value } : x))}/></div>
+        <div><strong>{entity.text}</strong><small>{t(entity.context_role === "previous" ? "previousContext" : entity.context_role === "next" ? "nextContext" : "currentSentence")}</small><input list="entity-type-options" value={entity.entity_type} aria-label={t("entityTypeLabel", { name: entity.text })} onChange={(e) => setEntities((items) => items.map((x) => x.id === entity.id ? { ...x, entity_type: e.target.value } : x))}/></div>
         <span className={`vote-badge vote-${entity.vote_count}`}>{entity.vote_count ? `${entity.vote_count}/3` : t("manual")}</span>
       </div>)}</div>
       <div className="section-title relation-title"><h2>{t("relations")}</h2><button className="small" disabled={enabledEntities.length < 2} title={enabledEntities.length < 2 ? t("needTwoEntities") : t("addRelation")} onClick={addRelation}>{t("addRelation")}</button></div>

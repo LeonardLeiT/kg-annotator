@@ -23,6 +23,7 @@ export type EntityCandidate = {
   entity_type: string;
   start: number;
   end: number;
+  context_role: "previous" | "current" | "next";
   vote_count: number;
   boundary_conflict: boolean;
   type_conflict: boolean;

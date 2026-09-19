@@ -29,7 +29,7 @@ The first complete manual pass is immediately usable as a knowledge graph. Every
 | Area | Capabilities |
 | --- | --- |
 | PDF processing | Page-level extraction, Chinese/English sentence segmentation, standalone formula reconstruction, original-formula snapshots, and surrounding context |
-| Manual annotation | Character-accurate entity spans, configurable entity types, extensive relation ontology, Pass and uncertain decisions, and unlimited saved revisions |
+| Manual annotation | Character-accurate spans across previous/current/next sentences, cross-sentence relations, configurable types, Pass and uncertain decisions, and unlimited revisions |
 | Agreement | Entity, relation, and overall Fleiss' Kappa across two or more manual annotation versions on reproducible random subsets |
 | Knowledge graph | Article-level aggregation, evidence provenance, interactive graph visualization, JSONL, CSV, and Gephi GEXF exports |
 | Entity resolution | BigModel `embedding-3`, 85% review threshold, exact-name auto-merge policy, human-selected preferred names, and accumulated aliases |

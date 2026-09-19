@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from app.models import AnnotationRevision, Document, EntityMention, Sentence
-from app.schemas import AnnotationInput, EntityInput
+from app.schemas import AnnotationInput, EntityInput, RelationInput
 from app.services.annotations import backfill_annotation_revisions, save_annotation
 from app.services.article_graph import build_article_graph
 from app.services.graph_export import GEXF_NS, build_gexf
@@ -122,4 +122,37 @@ def test_existing_human_decisions_are_backfilled_once():
         skipped_revision = next(item for item in revisions if item.sentence_id == skipped.id)
         assert '"Quartz"' in approved_revision.entities_json
         assert skipped_revision.entities_json == "[]"
+    engine.dispose()
+
+
+def test_entities_can_be_annotated_from_neighboring_context():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        document = Document(filename="paper.pdf", storage_path="paper.pdf", status="reviewable")
+        db.add(document)
+        db.flush()
+        sentence = Sentence(
+            document_id=document.id,
+            ordinal=1,
+            page_number=1,
+            text="It remains stable.",
+            context_before="Quartz was heated.",
+            context_after="The transition occurs at 900 K.",
+        )
+        db.add(sentence)
+        db.commit()
+
+        payload = AnnotationInput(
+            entities=[
+                EntityInput(client_id="quartz", text="Quartz", entity_type="Material", start=0, end=6, context_role="previous"),
+                EntityInput(client_id="temperature", text="900 K", entity_type="Condition", start=25, end=30, context_role="next"),
+            ],
+            relations=[RelationInput(
+                source_client_id="quartz", target_client_id="temperature", relation_type="STABLE_AT"
+            )],
+        )
+        assert save_annotation(db, sentence, payload) == 1
+        mentions = list(db.scalars(select(EntityMention).order_by(EntityMention.start)))
+        assert {item.context_role for item in mentions} == {"previous", "next"}
     engine.dispose()

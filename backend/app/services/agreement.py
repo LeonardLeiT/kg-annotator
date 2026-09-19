@@ -65,15 +65,15 @@ def _revision_ratings(revisions: list[AnnotationRevision]) -> tuple[list[dict[st
         relations = json.loads(revision.relations_json)
         by_client = {item["client_id"]: item for item in entities}
         entity_map = {
-            (item["start"], item["end"], item["text"]): item["entity_type"] for item in entities
+            (item.get("context_role", "current"), item["start"], item["end"], item["text"]): item["entity_type"] for item in entities
         }
         relation_map: dict[tuple, str] = {}
         for relation in relations:
             source = by_client.get(relation["source_client_id"])
             target = by_client.get(relation["target_client_id"])
             if source and target:
-                source_key = (source["start"], source["end"], source["text"])
-                target_key = (target["start"], target["end"], target["text"])
+                source_key = (source.get("context_role", "current"), source["start"], source["end"], source["text"])
+                target_key = (target.get("context_role", "current"), target["start"], target["end"], target["text"])
                 relation_map[(source_key, target_key)] = relation["relation_type"]
         parsed.append((entity_map, relation_map))
 

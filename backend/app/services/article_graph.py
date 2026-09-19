@@ -59,7 +59,12 @@ def build_article_graph(db: Session, document_id: str) -> dict:
             {
                 "sentence_id": member.sentence_id,
                 "page": sentence_by_id[member.sentence_id].page_number,
-                "text": sentence_by_id[member.sentence_id].text,
+                "text": {
+                    "previous": sentence_by_id[member.sentence_id].context_before,
+                    "current": sentence_by_id[member.sentence_id].text,
+                    "next": sentence_by_id[member.sentence_id].context_after,
+                }.get(member.context_role) or sentence_by_id[member.sentence_id].text,
+                "context_role": member.context_role,
             }
             for member in members
         ]

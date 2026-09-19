@@ -160,6 +160,7 @@ def sentence_detail(sentence_id: str, db: Session = Depends(get_db)):
             {
                 "id": item.id, "text": item.text, "entity_type": item.entity_type,
                 "start": item.start, "end": item.end, "vote_count": 0,
+                "context_role": item.context_role,
                 "boundary_conflict": False, "type_conflict": False, "variants": [],
             }
             for item in mentions
@@ -263,7 +264,7 @@ def export_jsonl(document_id: str, db: Session = Depends(get_db)):
         relations = list(db.scalars(select(RelationMention).where(RelationMention.sentence_id == sentence.id)))
         lines.append(json.dumps({
             "sentence_id": sentence.id, "page": sentence.page_number, "text": sentence.text,
-            "entities": [{"id": e.id, "text": e.text, "type": e.entity_type, "start": e.start, "end": e.end, "canonical_id": e.canonical_entity_id} for e in mentions],
+            "entities": [{"id": e.id, "text": e.text, "type": e.entity_type, "start": e.start, "end": e.end, "context_role": e.context_role, "canonical_id": e.canonical_entity_id} for e in mentions],
             "relations": [{"source": r.source_mention_id, "type": r.relation_type, "target": r.target_mention_id} for r in relations],
         }, ensure_ascii=False))
     return StreamingResponse(iter(["\n".join(lines)]), media_type="application/x-ndjson", headers={"Content-Disposition": "attachment; filename=annotations.jsonl"})

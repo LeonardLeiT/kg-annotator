@@ -35,6 +35,7 @@ def backfill_annotation_revisions(db: Session) -> int:
                 "entity_type": item.entity_type,
                 "start": item.start,
                 "end": item.end,
+                "context_role": item.context_role,
                 "source": "manual",
                 "decision": "manual",
             }
@@ -92,7 +93,12 @@ def save_annotation(db: Session, sentence: Sentence, payload: AnnotationInput) -
 
     mentions: dict[str, EntityMention] = {}
     for item in entities:
-        if sentence.text[item.start:item.end] != item.text:
+        source_text = {
+            "previous": sentence.context_before or "",
+            "current": sentence.text,
+            "next": sentence.context_after or "",
+        }[item.context_role]
+        if source_text[item.start:item.end] != item.text:
             raise ValueError(f"实体字符范围与原文不一致: {item.text}")
         canonical = CanonicalEntity(
             preferred_name=item.text,
@@ -107,6 +113,7 @@ def save_annotation(db: Session, sentence: Sentence, payload: AnnotationInput) -
             entity_type=item.entity_type,
             start=item.start,
             end=item.end,
+            context_role=item.context_role,
             source=item.source,
             decision=item.decision,
             canonical_entity_id=canonical.id,

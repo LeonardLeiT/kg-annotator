@@ -104,6 +104,7 @@ class EntityMention(Base):
     entity_type: Mapped[str] = mapped_column(String(128))
     start: Mapped[int] = mapped_column(Integer)
     end: Mapped[int] = mapped_column(Integer)
+    context_role: Mapped[str] = mapped_column(String(16), default="current")
     source: Mapped[str] = mapped_column(String(32), default="manual")
     decision: Mapped[str] = mapped_column(String(32), default="accepted")
     canonical_entity_id: Mapped[str | None] = mapped_column(ForeignKey("canonical_entities.id"), nullable=True, index=True)
