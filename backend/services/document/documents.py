@@ -6,7 +6,15 @@ import pymupdf
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ..models import Document, FormulaAsset, Sentence
+from app.config import get_settings
+from app.models import Document, FormulaAsset, Sentence
+from .document_structure import (
+    blocks_from_mineru_v1,
+    blocks_from_mineru_v2,
+    merge_incomplete_blocks,
+    write_clean_artifacts,
+)
+from .mineru import parse_pdf as mineru_parse_pdf
 
 
 SENTENCE_BOUNDARY = re.compile(r"(?<=[。！？!?；;])\s*|(?<=\.)\s+(?=[A-Z0-9])")
@@ -241,7 +249,7 @@ def surrounding_context(rows: list[Sentence], index: int) -> tuple[str | None, s
     return before, after
 
 
-def parse_pdf(db: Session, document: Document) -> Document:
+def _parse_pdf_pymupdf(db: Session, document: Document) -> Document:
     pages: list[tuple[int, str, tuple[float, float, float, float] | None, str | None]] = []
     formula_dir = Path(document.storage_path).parent / "formula_assets"
     formula_dir.mkdir(parents=True, exist_ok=True)
@@ -258,7 +266,9 @@ def parse_pdf(db: Session, document: Document) -> Document:
                     page.get_pixmap(matrix=pymupdf.Matrix(2, 2), clip=clip, alpha=False).save(image_path)
                 pages.append((page_index + 1, sentence_text, bbox, image_path))
 
-    old_sentence_ids = list(db.scalars(select(Sentence.id).where(Sentence.document_id == document.id)))
+    old_sentence_ids = list(
+        db.scalars(select(Sentence.id).where(Sentence.document_id == document.id))
+    )
     if old_sentence_ids:
         db.execute(delete(FormulaAsset).where(FormulaAsset.sentence_id.in_(old_sentence_ids)))
     db.execute(delete(Sentence).where(Sentence.document_id == document.id))
@@ -295,3 +305,101 @@ def parse_pdf(db: Session, document: Document) -> Document:
     db.commit()
     db.refresh(document)
     return document
+
+
+def _scaled_clip(
+    page: pymupdf.Page,
+    bbox: tuple[float, float, float, float],
+) -> pymupdf.Rect:
+    """Map MinerU's normalized 0..1000 coordinates back onto the source page."""
+    x0, y0, x1, y1 = bbox
+    x0, x1 = x0 * page.rect.width / 1000, x1 * page.rect.width / 1000
+    y0, y1 = y0 * page.rect.height / 1000, y1 * page.rect.height / 1000
+    clip = pymupdf.Rect(x0, y0, x1, y1) + (-5, -5, 5, 5)
+    return clip & page.rect
+
+
+def _parse_pdf_mineru(db: Session, document: Document) -> Document:
+    settings = get_settings()
+    if not settings.mineru_api_key:
+        raise ValueError("PDF_PARSER=mineru 但未配置 MINERU_API_KEY")
+
+    pdf_path = Path(document.storage_path)
+    artifact_dir = pdf_path.parent / "parse_assets" / document.id
+    payload, version = mineru_parse_pdf(
+        pdf_path,
+        artifact_dir,
+        settings.mineru_api_key,
+        poll_interval=settings.mineru_poll_interval,
+        poll_timeout=settings.mineru_poll_timeout,
+    )
+    parser = blocks_from_mineru_v2 if version == "v2" else blocks_from_mineru_v1
+    raw_blocks = parser(payload, merge=False)
+    blocks = merge_incomplete_blocks(raw_blocks)
+    if not blocks:
+        raise ValueError("MinerU 返回结果经结构清理后没有可标注正文")
+    write_clean_artifacts(raw_blocks, blocks, artifact_dir)
+
+    formula_dir = pdf_path.parent / "formula_assets"
+    formula_dir.mkdir(parents=True, exist_ok=True)
+    page_count = 0
+    pages: list[tuple[int, str, tuple[float, float, float, float] | None, str | None]] = []
+    with pymupdf.open(pdf_path) as pdf:
+        page_count = len(pdf)
+        for block in blocks:
+            if block.category == "heading":
+                continue
+            units = [block.text] if block.category == "equation" else split_sentences(block.text)
+            for unit in units:
+                bbox = block.bbox if block.category == "equation" else None
+                image_path = None
+                if bbox is not None and 1 <= block.page_number <= page_count:
+                    image_path = str((formula_dir / f"{document.id}_{len(pages)}.png").resolve())
+                    clip = _scaled_clip(pdf[block.page_number - 1], bbox)
+                    if not clip.is_empty:
+                        pdf[block.page_number - 1].get_pixmap(
+                            matrix=pymupdf.Matrix(2, 2), clip=clip, alpha=False
+                        ).save(image_path)
+                    else:
+                        image_path = None
+                pages.append((block.page_number, unit, bbox, image_path))
+
+    old_sentence_ids = list(db.scalars(select(Sentence.id).where(Sentence.document_id == document.id)))
+    if old_sentence_ids:
+        db.execute(delete(FormulaAsset).where(FormulaAsset.sentence_id.in_(old_sentence_ids)))
+    db.execute(delete(Sentence).where(Sentence.document_id == document.id))
+    rows: list[Sentence] = []
+    formula_metadata: list[tuple[Sentence, tuple[float, float, float, float], str]] = []
+    for ordinal, (page_number, text, bbox, image_path) in enumerate(pages):
+        row = Sentence(document_id=document.id, ordinal=ordinal, page_number=page_number, text=text)
+        rows.append(row)
+        if bbox is not None and image_path is not None:
+            formula_metadata.append((row, bbox, image_path))
+    for index, row in enumerate(rows):
+        row.context_before, row.context_after = surrounding_context(rows, index)
+        db.add(row)
+    db.flush()
+    for row, bbox, image_path in formula_metadata:
+        db.add(FormulaAsset(
+            sentence_id=row.id,
+            page_number=row.page_number,
+            bbox_json=json.dumps(bbox),
+            image_path=image_path,
+        ))
+    document.page_count = page_count
+    document.sentence_count = len(rows)
+    document.status = "reviewable"
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def parse_pdf(db: Session, document: Document) -> Document:
+    """Parse with MinerU when configured; retain PyMuPDF as the local fallback."""
+    settings = get_settings()
+    parser = settings.pdf_parser.strip().lower()
+    if parser not in {"auto", "mineru", "pymupdf"}:
+        raise ValueError("PDF_PARSER 仅支持 auto、mineru 或 pymupdf")
+    if parser == "mineru" or (parser == "auto" and settings.mineru_api_key):
+        return _parse_pdf_mineru(db, document)
+    return _parse_pdf_pymupdf(db, document)

@@ -29,6 +29,10 @@ class ExtractionResult(BaseModel):
     relations: list[PredictedRelation] = Field(default_factory=list)
 
 
+class SentenceSuggestion(ExtractionResult):
+    model: str
+
+
 class EntityInput(BaseModel):
     client_id: str
     text: str

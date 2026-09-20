@@ -3,8 +3,8 @@ import json
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from ..models import AnnotationRevision, CanonicalEntity, Document, EntityMention, RelationMention, Sentence
-from ..schemas import AnnotationInput
+from app.models import AnnotationRevision, CanonicalEntity, Document, EntityMention, RelationMention, Sentence
+from app.schemas import AnnotationInput
 
 
 def backfill_annotation_revisions(db: Session) -> int:

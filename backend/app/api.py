@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .db import get_db
+from .db import SessionLocal, get_db
 from .models import (
     CanonicalEntity,
     AnnotationRevision,
@@ -23,19 +25,46 @@ from .models import (
     RelationMention,
     Sentence,
 )
-from .schemas import AnnotationInput, MergeDecisionInput
-from .services.annotations import save_annotation
-from .services.agreement import document_fleiss_kappa
-from .services.article_graph import build_article_graph
-from .services.documents import is_formula_unit, parse_pdf
-from .services.document_deletion import delete_document
-from .services.ontology import load_ontology
-from .services.graph_export import build_gexf
-from .services.global_graph import build_global_graph
-from .services.resolution import decide_merge, generate_merge_candidates
+from .schemas import AnnotationInput, MergeDecisionInput, SentenceSuggestion
+from services.annotation.annotations import save_annotation
+from services.evaluation.agreement import document_fleiss_kappa
+from services.kg.article_graph import build_article_graph
+from services.document.documents import is_formula_unit, parse_pdf
+from services.document.document_deletion import delete_document
+from services.kg.ontology import load_ontology
+from services.kg.graph_export import build_gexf
+from services.kg.global_graph import build_global_graph
+from services.kg.resolution import decide_merge, generate_merge_candidates
+from services.kg.extraction import LLMNotConfiguredError
+from services.kg.suggestions import suggest_sentence
 
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
+parse_tasks: set[asyncio.Task[None]] = set()
+
+
+def parse_document_in_background(document_id: str) -> None:
+    """Parse one document in its own DB session so annotation requests stay responsive."""
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document:
+            return
+        try:
+            parse_pdf(db, document)
+        except Exception:
+            db.rollback()
+            document = db.get(Document, document_id)
+            if document:
+                document.status = "parse_failed"
+                db.commit()
+            logger.exception("PDF parsing failed for document %s", document_id)
+
+
+def queue_document_parse(document_id: str) -> None:
+    task = asyncio.create_task(asyncio.to_thread(parse_document_in_background, document_id))
+    parse_tasks.add(task)
+    task.add_done_callback(parse_tasks.discard)
 
 
 def document_json(row: Document, db: Session) -> dict:
@@ -50,10 +79,14 @@ def document_json(row: Document, db: Session) -> dict:
         .join(Sentence, Sentence.id == AnnotationRevision.sentence_id)
         .where(Sentence.document_id == row.id)
     ) or 0
+    clean_markdown_path = (
+        Path(row.storage_path).parent / "parse_assets" / row.id / "clean" / "document.md"
+    )
     return {
         "id": row.id, "filename": row.filename, "status": row.status,
         "page_count": row.page_count, "sentence_count": row.sentence_count,
         "reviewed_count": reviewed_count, "max_revision": max_revision,
+        "has_clean_markdown": clean_markdown_path.is_file(),
         "created_at": row.created_at,
     }
 
@@ -78,17 +111,17 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     safe_name = f"{uuid4()}.pdf"
     target = settings.upload_dir / safe_name
     target.write_bytes(await file.read())
-    row = Document(filename=Path(file.filename).name, storage_path=str(target.resolve()))
+    row = Document(
+        filename=Path(file.filename).name,
+        storage_path=str(target.resolve()),
+        status="parsing",
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
-    try:
-        parse_pdf(db, row)
-    except Exception as exc:
-        row.status = "parse_failed"
-        db.commit()
-        raise HTTPException(422, f"PDF 解析失败: {exc}") from exc
-    return document_json(row, db)
+    payload = document_json(row, db)
+    queue_document_parse(row.id)
+    return payload
 
 
 @router.get("/documents")
@@ -101,8 +134,8 @@ def remove_document(document_id: str, db: Session = Depends(get_db)):
     document = db.get(Document, document_id)
     if not document:
         raise HTTPException(404, "文档不存在")
-    if document.status in {"queued", "extracting"}:
-        raise HTTPException(409, "文档正在抽取，暂时不能删除")
+    if document.status in {"parsing", "queued", "extracting"}:
+        raise HTTPException(409, "文档正在解析或抽取，暂时不能删除")
     result = delete_document(db, document)
     return {"deleted": True, "document_id": document_id, **result}
 
@@ -118,6 +151,27 @@ def list_sentences(document_id: str, db: Session = Depends(get_db)):
         }
         for row in rows
     ]
+
+
+@router.get("/documents/{document_id}/clean-markdown")
+def clean_markdown(document_id: str, db: Session = Depends(get_db)):
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(404, "文档不存在")
+    markdown_path = (
+        Path(document.storage_path).parent
+        / "parse_assets"
+        / document.id
+        / "clean"
+        / "document.md"
+    )
+    if not markdown_path.is_file():
+        raise HTTPException(404, "该文档没有干净 Markdown；请使用 MinerU 重新解析")
+    return FileResponse(
+        markdown_path,
+        media_type="text/markdown; charset=utf-8",
+        filename=f"{Path(document.filename).stem}.md",
+    )
 
 
 @router.get("/documents/{document_id}/graph")
@@ -205,6 +259,20 @@ def formula_image(sentence_id: str, db: Session = Depends(get_db)):
     if not asset or not Path(asset.image_path).is_file():
         raise HTTPException(404, "公式原图不存在")
     return FileResponse(asset.image_path, media_type="image/png")
+
+
+@router.post("/sentences/{sentence_id}/suggestions", response_model=SentenceSuggestion)
+def sentence_suggestions(sentence_id: str, db: Session = Depends(get_db)):
+    sentence = db.get(Sentence, sentence_id)
+    if not sentence:
+        raise HTTPException(404, "句子不存在")
+    try:
+        return suggest_sentence(sentence)
+    except LLMNotConfiguredError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:
+        logger.exception("LLM suggestion failed for sentence %s", sentence_id)
+        raise HTTPException(502, "LLM 推荐失败，请检查模型配置或稍后重试") from exc
 
 
 @router.put("/sentences/{sentence_id}/annotation")

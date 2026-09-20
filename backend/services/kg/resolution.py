@@ -7,8 +7,8 @@ import re
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import CanonicalEntity, EntityMention, MergeCandidate, Sentence
-from ..config import get_settings
+from app.models import CanonicalEntity, EntityMention, MergeCandidate, Sentence
+from app.config import get_settings
 from .embeddings import get_embedding_provider
 
 

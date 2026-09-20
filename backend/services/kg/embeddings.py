@@ -7,7 +7,7 @@ from typing import Protocol
 
 import httpx
 
-from ..config import get_settings
+from app.config import get_settings
 
 
 class EmbeddingProvider(Protocol):

@@ -4,8 +4,6 @@ from sqlalchemy.orm import Session
 from app.db import Base
 from app.models import (
     CanonicalEntity,
-    ConsensusEntity,
-    ConsensusRelation,
     Document,
     EntityMention,
     FormulaAsset,
@@ -13,7 +11,7 @@ from app.models import (
     RelationMention,
     Sentence,
 )
-from app.services.document_deletion import delete_document
+from services.document.document_deletion import delete_document
 
 
 def test_delete_document_removes_private_data_and_preserves_shared_entity(tmp_path):
@@ -56,20 +54,6 @@ def test_delete_document_removes_private_data_and_preserves_shared_entity(tmp_pa
         db.add(RelationMention(
             sentence_id=first_sentence.id, source_mention_id=first_shared.id,
             target_mention_id=first_orphan.id, relation_type="related_to",
-        ))
-        left = ConsensusEntity(
-            sentence_id=first_sentence.id, text="A", entity_type="Material",
-            start=0, end=1, vote_count=3,
-        )
-        right = ConsensusEntity(
-            sentence_id=first_sentence.id, text="B", entity_type="Material",
-            start=2, end=3, vote_count=3,
-        )
-        db.add_all([left, right])
-        db.flush()
-        db.add(ConsensusRelation(
-            sentence_id=first_sentence.id, source_entity_id=left.id,
-            target_entity_id=right.id, relation_type="related_to", vote_count=3,
         ))
         db.add(FormulaAsset(
             sentence_id=first_sentence.id, page_number=1,

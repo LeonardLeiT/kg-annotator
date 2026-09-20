@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from app.models import AnnotationRevision, Document, Sentence
-from app.services.agreement import agreement_label, document_fleiss_kappa, fleiss_kappa, fleiss_kappa_binary
+from services.evaluation.agreement import agreement_label, document_fleiss_kappa, fleiss_kappa, fleiss_kappa_binary
 
 
 def test_fleiss_kappa_is_one_for_mixed_unanimous_items():

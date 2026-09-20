@@ -8,7 +8,7 @@ __pycache__/
 *.sqlite
 *.sqlite3
 *.pdf
-backend/data/
+data/
 backend/*.egg-info/
 frontend/node_modules/
 frontend/dist/

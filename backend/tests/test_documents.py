@@ -1,5 +1,5 @@
 from app.models import Sentence
-from app.services.documents import is_formula_unit, split_block_units, split_sentences, surrounding_context
+from services.document.documents import is_formula_unit, split_block_units, split_sentences, surrounding_context
 
 
 def test_split_chinese_and_english_sentences():

@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from app.db import Base
 from app.models import AnnotationRevision, CanonicalEntity, Document, EntityMention, Sentence
 from app.schemas import AnnotationInput, EntityInput, RelationInput
-from app.services.annotations import backfill_annotation_revisions, save_annotation
-from app.services.article_graph import build_article_graph
-from app.services.graph_export import GEXF_NS, build_gexf
-from app.services.global_graph import build_global_graph
+from services.annotation.annotations import backfill_annotation_revisions, save_annotation
+from services.kg.article_graph import build_article_graph
+from services.kg.graph_export import GEXF_NS, build_gexf
+from services.kg.global_graph import build_global_graph
 from xml.etree import ElementTree as ET
 
 

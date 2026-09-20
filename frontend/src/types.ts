@@ -6,6 +6,7 @@ export type DocumentItem = {
   sentence_count: number;
   reviewed_count: number;
   max_revision: number;
+  has_clean_markdown: boolean;
 };
 
 export type SentenceItem = {
@@ -46,6 +47,27 @@ export type SentenceDetail = SentenceItem & {
   entities: EntityCandidate[];
   relations: RelationCandidate[];
   revision_count: number;
+};
+
+export type SuggestedEntity = {
+  local_id: string;
+  text: string;
+  entity_type: string;
+  start: number;
+  end: number;
+};
+
+export type SuggestedRelation = {
+  source_id: string;
+  relation_type: string;
+  target_id: string;
+  evidence: string;
+};
+
+export type SentenceSuggestion = {
+  model: string;
+  entities: SuggestedEntity[];
+  relations: SuggestedRelation[];
 };
 
 export type Ontology = {

@@ -27,7 +27,7 @@ dev = ["pytest>=8,<9"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*"]
+include = ["app*", "services*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

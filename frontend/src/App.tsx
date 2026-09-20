@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
-import type { AgreementResult, ArticleGraph, DocumentItem, EntityCandidate, MergeCandidate, Ontology, RelationCandidate, SentenceDetail, SentenceItem } from "./types";
+import type { AgreementResult, ArticleGraph, DocumentItem, EntityCandidate, MergeCandidate, Ontology, RelationCandidate, SentenceDetail, SentenceItem, SentenceSuggestion } from "./types";
 import { formatMessage, humanizeOntologyKey, type Language, type MessageKey } from "./i18n";
 
 type Page = "documents" | "annotation" | "graph" | "merge";
@@ -20,7 +20,7 @@ function useI18n() { return useContext(I18nContext); }
 function StatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
   const labels: Record<string, string> = {
-    parsed: t("statusParsed"), queued: t("statusQueued"), extracting: t("statusExtracting"), reviewable: t("statusReviewable"),
+    parsed: t("statusParsed"), parsing: t("statusParsing"), parse_failed: t("statusParseFailed"), queued: t("statusQueued"), extracting: t("statusExtracting"), reviewable: t("statusReviewable"),
     annotating: t("statusAnnotating"), completed: t("statusCompleted"), approved: t("statusApproved"), skipped: t("statusSkipped"), uncertain: t("statusUncertain"), predicted: t("statusPredicted"), pending: t("statusPending"),
   };
   return <span className={`status status-${status}`}>{labels[status] || status}</span>;
@@ -32,13 +32,17 @@ function DocumentsPage({ onAnnotate, onDeleted }: { onAnnotate: (doc: DocumentIt
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  const refresh = () => api.documents().then((items) => { setDocuments(items); setMessage(""); }).catch((e) => setMessage(e.message));
-  useEffect(() => { void refresh(); }, []);
+  const refresh = () => api.documents().then(setDocuments).catch((e) => setMessage(e.message));
+  useEffect(() => {
+    void refresh();
+    const timer = globalThis.setInterval(() => void refresh(), 3000);
+    return () => globalThis.clearInterval(timer);
+  }, []);
 
   async function upload(file?: File) {
     if (!file) return;
     setBusy(true); setMessage(t("parsingPdf"));
-    try { await api.upload(file); setMessage(t("parsedPdf")); await refresh(); }
+    try { await api.upload(file); setMessage(t("parseQueued")); await refresh(); }
     catch (e) { setMessage((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -73,9 +77,10 @@ function DocumentsPage({ onAnnotate, onDeleted }: { onAnnotate: (doc: DocumentIt
           <div className="doc-icon">PDF</div>
           <div className="doc-main"><strong>{doc.filename}</strong><span>{doc.page_count} {t("pages")} · {doc.sentence_count} {t("sentences")}</span>{doc.reviewed_count > 0 && <span>{t("documentProgress", { reviewed: doc.reviewed_count, total: doc.sentence_count })} · {t("highestVersion", { count: doc.max_revision })}</span>}</div>
           <StatusBadge status={doc.reviewed_count > 0 && doc.status === "reviewable" ? "annotating" : doc.status}/>
+          {doc.has_clean_markdown && <a className="download-link" href={api.cleanMarkdownUrl(doc.id)}>{t("downloadMarkdown")}</a>}
           {["parsed", "reviewable"].includes(doc.status) && <button className="primary" onClick={() => onAnnotate(doc)}>{doc.reviewed_count > 0 ? t("continueAnnotation") : t("startAnnotation")}</button>}
           {doc.status === "completed" && <button onClick={() => onAnnotate(doc)}>{t("continueAnnotation")}</button>}
-          <button className="danger-button" disabled={busy || ["queued", "extracting"].includes(doc.status)} onClick={() => remove(doc)}>{t("delete")}</button>
+          <button className="danger-button" disabled={busy || ["parsing", "queued", "extracting"].includes(doc.status)} onClick={() => remove(doc)}>{t("delete")}</button>
         </article>)}</div>}
     </section>
   </main>;
@@ -146,6 +151,7 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
   const { language, t } = useI18n();
   const sentenceListRef = useRef<HTMLElement>(null);
   const activeSentenceRef = useRef<HTMLButtonElement>(null);
+  const suggestionRequestRef = useRef(0);
   const [sentences, setSentences] = useState<SentenceItem[]>([]);
   const [index, setIndex] = useState(0);
   const [detail, setDetail] = useState<SentenceDetail | null>(null);
@@ -154,6 +160,9 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
   const [selected, setSelected] = useState<{ start: number; end: number; text: string; context_role: ContextRole } | null>(null);
   const [newType, setNewType] = useState("");
   const [message, setMessage] = useState("");
+  const [suggestions, setSuggestions] = useState<SentenceSuggestion | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
 
   useEffect(() => {
     api.sentences(document.id).then((items) => {
@@ -176,7 +185,13 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
   useEffect(() => {
     const item = sentences[index];
     if (!item) return;
+    const detailRequestId = suggestionRequestRef.current + 1;
+    suggestionRequestRef.current = detailRequestId;
+    setSuggestions(null);
+    setSuggestionError("");
+    setSuggesting(false);
     api.sentence(item.id).then((data) => {
+      if (suggestionRequestRef.current !== detailRequestId) return;
       const hasHumanReview = data.status === "approved" || data.status === "uncertain";
       setDetail(data);
       setEntities(hasHumanReview ? data.entities.map((entity) => ({ ...entity, enabled: true })) : []);
@@ -184,6 +199,72 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
       setSelected(null);
     });
   }, [sentences, index]);
+
+  async function requestSuggestions() {
+    if (!detail || suggesting) return;
+    const requestId = suggestionRequestRef.current + 1;
+    suggestionRequestRef.current = requestId;
+    setSuggesting(true);
+    setSuggestionError("");
+    setSuggestions(null);
+    try {
+      const result = await api.suggestions(detail.id);
+      if (suggestionRequestRef.current === requestId) setSuggestions(result);
+    } catch (error) {
+      if (suggestionRequestRef.current === requestId) {
+        setSuggestionError(error instanceof Error ? error.message : t("suggestionFailed"));
+      }
+    } finally {
+      if (suggestionRequestRef.current === requestId) setSuggesting(false);
+    }
+  }
+
+  function applySuggestions() {
+    if (!suggestions) return;
+    const nextEntities = [...entities];
+    const localIdMap = new Map<string, string>();
+    for (const suggestion of suggestions.entities) {
+      const existing = nextEntities.find((entity) =>
+        entity.context_role === "current" && entity.text === suggestion.text &&
+        entity.entity_type === suggestion.entity_type && entity.start === suggestion.start && entity.end === suggestion.end
+      );
+      const entityId = existing?.id || crypto.randomUUID();
+      localIdMap.set(suggestion.local_id, entityId);
+      if (!existing) nextEntities.push({
+        id: entityId,
+        text: suggestion.text,
+        entity_type: suggestion.entity_type,
+        start: suggestion.start,
+        end: suggestion.end,
+        context_role: "current",
+        vote_count: 0,
+        boundary_conflict: false,
+        type_conflict: false,
+        enabled: true,
+      });
+    }
+    const nextRelations = [...relations];
+    for (const suggestion of suggestions.relations) {
+      const sourceId = localIdMap.get(suggestion.source_id);
+      const targetId = localIdMap.get(suggestion.target_id);
+      if (!sourceId || !targetId) continue;
+      const duplicate = nextRelations.some((relation) =>
+        relation.source_entity_id === sourceId && relation.target_entity_id === targetId && relation.relation_type === suggestion.relation_type
+      );
+      if (!duplicate) nextRelations.push({
+        id: crypto.randomUUID(),
+        source_entity_id: sourceId,
+        target_entity_id: targetId,
+        relation_type: suggestion.relation_type,
+        vote_count: 0,
+        enabled: true,
+      });
+    }
+    setEntities(nextEntities);
+    setRelations(nextRelations);
+    setSuggestions(null);
+    setMessage(t("suggestionsApplied"));
+  }
 
   function addSelected() {
     if (!selected || !newType) return;
@@ -276,6 +357,22 @@ function AnnotationPage({ document, ontology }: { document: DocumentItem; ontolo
     <section className="annotation-center">
       <div className="sentence-meta"><span>{t("page", { number: detail.page_number })}</span><span>{detail.content_type === "formula" ? t("formula") : t("sentenceNumber", { number: detail.ordinal + 1 })}</span><span>{t("revisionCount", { count: detail.revision_count })}</span><span>{t("ontology")} v{ontology?.version}</span></div>
       <div className="manual-annotation-hint"><strong>{t("manualAnnotation")}</strong><span>{t("manualHint")}</span></div>
+      <div className="llm-assist">
+        <div className="llm-assist-header"><div><strong>{t("llmAssist")}</strong><span>{t("llmAssistHint")}</span></div><button disabled={suggesting} onClick={requestSuggestions}>{suggesting ? t("generatingSuggestions") : t("generateSuggestions")}</button></div>
+        {suggestionError && <div className="llm-assist-error">{t("suggestionFailed")}: {suggestionError}</div>}
+        {suggestions && <div className="llm-suggestions">
+          <div className="llm-suggestion-meta">{t("modelLabel")}: {suggestions.model}</div>
+          {suggestions.entities.length === 0 && suggestions.relations.length === 0 ? <div className="llm-empty">{t("noSuggestions")}</div> : <>
+            <div className="llm-suggestion-group"><small>{t("suggestedEntities")}</small><div className="llm-entity-chips">{suggestions.entities.map((entity) => <span key={entity.local_id}><strong>{entity.text}</strong><em>{entity.entity_type}</em></span>)}</div></div>
+            <div className="llm-suggestion-group"><small>{t("suggestedRelations")}</small>{suggestions.relations.length === 0 ? <div className="llm-empty">—</div> : suggestions.relations.map((relation, relationIndex) => {
+              const source = suggestions.entities.find((entity) => entity.local_id === relation.source_id)?.text || relation.source_id;
+              const target = suggestions.entities.find((entity) => entity.local_id === relation.target_id)?.text || relation.target_id;
+              return <div className="llm-relation" key={`${relation.source_id}-${relation.relation_type}-${relation.target_id}-${relationIndex}`}><strong>{source}</strong><span>— {relation.relation_type} →</span><strong>{target}</strong></div>;
+            })}</div>
+          </>}
+          <div className="llm-suggestion-actions"><button className="ghost" onClick={() => setSuggestions(null)}>{t("dismissSuggestions")}</button><button className="primary" disabled={suggestions.entities.length === 0} onClick={applySuggestions}>{t("applySuggestions")}</button></div>
+        </div>}
+      </div>
       <div className="context selectable-context"><small>{t("previousContext")}</small>{detail.context_before ? <HighlightedSentence text={detail.context_before} entities={entities.filter((entity) => entity.context_role === "previous")} onSelection={(start, end, text) => { setSelected({ start, end, text, context_role: "previous" }); setNewType(typeKeys[0] || ""); }}/> : "—"}</div>
       <div className={detail.content_type === "formula" ? "formula-unit" : ""}><HighlightedSentence text={detail.text} entities={entities.filter((entity) => entity.context_role === "current")} onSelection={(start, end, text) => { setSelected({ start, end, text, context_role: "current" }); setNewType(typeKeys[0] || ""); }}/></div>
       {detail.has_formula_image && <figure className="formula-source"><figcaption>{t("originalFormula")}</figcaption><img src={api.formulaImageUrl(detail.id)} alt={t("originalFormula")}/></figure>}

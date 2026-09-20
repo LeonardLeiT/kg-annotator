@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import AnnotationRevision, Sentence
+from app.models import AnnotationRevision, Sentence
 
 
 def fleiss_kappa(category_counts: list[dict[str, int]], annotators: int = 3) -> dict:

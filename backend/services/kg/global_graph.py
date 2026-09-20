@@ -6,7 +6,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import CanonicalEntity, Document, EntityMention, RelationMention, Sentence
+from app.models import CanonicalEntity, Document, EntityMention, RelationMention, Sentence
 
 
 def _evidence_text(sentence: Sentence, mention: EntityMention) -> str:

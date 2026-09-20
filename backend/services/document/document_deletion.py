@@ -1,20 +1,17 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import (
+from app.models import (
     AnnotationRevision,
     CanonicalEntity,
-    ConsensusEntity,
-    ConsensusRelation,
     Document,
     EntityMention,
-    ExtractionRun,
     FormulaAsset,
-    Job,
     MergeCandidate,
     RelationMention,
     Sentence,
@@ -27,17 +24,13 @@ def delete_document(db: Session, document: Document) -> dict[str, int]:
         db.scalars(select(Sentence.id).where(Sentence.document_id == document.id))
     )
     files = [Path(document.storage_path)]
+    parse_asset_dir = Path(document.storage_path).parent / "parse_assets" / document.id
 
     if sentence_ids:
         files.extend(
             Path(path)
             for path in db.scalars(
                 select(FormulaAsset.image_path).where(FormulaAsset.sentence_id.in_(sentence_ids))
-            )
-        )
-        consensus_ids = list(
-            db.scalars(
-                select(ConsensusEntity.id).where(ConsensusEntity.sentence_id.in_(sentence_ids))
             )
         )
         mention_ids = list(
@@ -52,16 +45,6 @@ def delete_document(db: Session, document: Document) -> dict[str, int]:
             )
         )
 
-        if consensus_ids:
-            db.execute(
-                delete(ConsensusRelation).where(
-                    or_(
-                        ConsensusRelation.sentence_id.in_(sentence_ids),
-                        ConsensusRelation.source_entity_id.in_(consensus_ids),
-                        ConsensusRelation.target_entity_id.in_(consensus_ids),
-                    )
-                )
-            )
         if mention_ids:
             db.execute(
                 delete(RelationMention).where(
@@ -75,8 +58,6 @@ def delete_document(db: Session, document: Document) -> dict[str, int]:
 
         db.execute(delete(FormulaAsset).where(FormulaAsset.sentence_id.in_(sentence_ids)))
         db.execute(delete(AnnotationRevision).where(AnnotationRevision.sentence_id.in_(sentence_ids)))
-        db.execute(delete(ExtractionRun).where(ExtractionRun.sentence_id.in_(sentence_ids)))
-        db.execute(delete(ConsensusEntity).where(ConsensusEntity.sentence_id.in_(sentence_ids)))
         db.execute(delete(EntityMention).where(EntityMention.sentence_id.in_(sentence_ids)))
         db.execute(delete(Sentence).where(Sentence.id.in_(sentence_ids)))
         db.flush()
@@ -103,7 +84,6 @@ def delete_document(db: Session, document: Document) -> dict[str, int]:
     else:
         orphan_ids = set()
 
-    db.execute(delete(Job).where(Job.document_id == document.id))
     db.execute(delete(Document).where(Document.id == document.id))
     db.commit()
 
@@ -117,6 +97,12 @@ def delete_document(db: Session, document: Document) -> dict[str, int]:
             # The database deletion is authoritative; a locked artifact can be
             # cleaned manually later without leaving broken database records.
             continue
+
+    try:
+        if parse_asset_dir.is_dir():
+            shutil.rmtree(parse_asset_dir)
+    except OSError:
+        pass
 
     return {
         "sentences_deleted": len(sentence_ids),

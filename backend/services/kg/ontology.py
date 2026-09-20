@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from ..config import get_settings
+from app.config import get_settings
 
 
 @dataclass(frozen=True)

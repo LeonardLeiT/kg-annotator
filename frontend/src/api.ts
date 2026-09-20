@@ -1,4 +1,4 @@
-import type { AgreementResult, ArticleGraph, DocumentItem, MergeCandidate, Ontology, SentenceDetail, SentenceItem } from "./types";
+import type { AgreementResult, ArticleGraph, DocumentItem, MergeCandidate, Ontology, SentenceDetail, SentenceItem, SentenceSuggestion } from "./types";
 
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
@@ -22,7 +22,9 @@ export const api = {
   },
   sentences: (id: string) => request<SentenceItem[]>(`/documents/${id}/sentences`),
   sentence: (id: string) => request<SentenceDetail>(`/sentences/${id}`),
+  suggestions: (id: string) => request<SentenceSuggestion>(`/sentences/${id}/suggestions`, { method: "POST" }),
   formulaImageUrl: (id: string) => `${BASE}/sentences/${id}/formula-image`,
+  cleanMarkdownUrl: (id: string) => `${BASE}/documents/${id}/clean-markdown`,
   articleGraph: (id: string) => request<ArticleGraph>(`/documents/${id}/graph`),
   globalGraph: () => request<ArticleGraph>("/graph/global"),
   globalGraphExportUrl: () => `${BASE}/export/global/gexf`,

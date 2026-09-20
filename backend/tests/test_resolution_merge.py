@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from app.models import CanonicalEntity, Document, EntityMention, MergeCandidate, Sentence
-from app.services.resolution import decide_merge
+from services.kg.resolution import decide_merge
 
 
 def make_merge_case(db: Session):

@@ -7,7 +7,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import EntityMention, RelationMention, Sentence
+from app.models import EntityMention, RelationMention, Sentence
 
 
 def normalize_entity_name(value: str) -> str:

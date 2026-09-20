@@ -5,7 +5,7 @@ from sqlalchemy import inspect, text
 from .api import router
 from .config import get_settings
 from .db import Base, SessionLocal, engine
-from .services.annotations import backfill_annotation_revisions
+from services.annotation.annotations import backfill_annotation_revisions
 
 
 def create_app() -> FastAPI:

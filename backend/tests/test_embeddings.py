@@ -2,8 +2,8 @@ import json
 
 import httpx
 
-from app.services.embeddings import BigModelEmbeddingProvider, LocalHashEmbeddingProvider
-from app.services.resolution import classify_similarity, cosine
+from services.kg.embeddings import BigModelEmbeddingProvider, LocalHashEmbeddingProvider
+from services.kg.resolution import classify_similarity, cosine
 
 
 def test_local_embedding_is_deterministic_and_normalized():
